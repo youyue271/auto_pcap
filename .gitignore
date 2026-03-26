@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+.DS_Store
+traffic_data.db
+*.log
+
+# Large local capture files
+tests/Data.pcap
+

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>分析结果 - {{ filename }}</title>
+  <style>
+    :root {
+      --bg: #0a1020;
+      --panel: #111c35;
+      --card: #192644;
+      --text: #e5edf8;
+      --muted: #9db0cc;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      background:
+        radial-gradient(circle at 20% -10%, rgba(14, 165, 233, .25), transparent 35%),
+        radial-gradient(circle at 100% 100%, rgba(245, 158, 11, .2), transparent 30%),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .container {
+      width: min(1100px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 14px;
+      padding: 16px 18px;
+    }
+    h1, h2 {
+      margin: 0 0 10px;
+      font-weight: 700;
+    }
+    .muted { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .metric .label { color: var(--muted); font-size: 13px; }
+    .metric .value { font-size: 24px; margin-top: 8px; font-weight: 700; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, .08);
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .severity-high { color: var(--danger); }
+    .severity-medium { color: var(--warn); }
+    .severity-low { color: var(--ok); }
+    .actions a {
+      color: #7dd3fc;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="panel">
+      <h1>分析完成</h1>
+      <div class="muted">文件: {{ filename }}</div>
+      <div class="actions" style="margin-top:8px;"><a href="/">继续分析其它文件</a></div>
+    </section>
+
+    <section class="panel">
+      <h2>总体统计</h2>
+      <div class="grid">
+        <div class="metric">
+          <div class="label">Packet 数量</div>
+          <div class="value">{{ report.packet_count }}</div>
+        </div>
+        <div class="metric">
+          <div class="label">协议事件数</div>
+          <div class="value">{{ report.stats.protocol_event_count }}</div>
+        </div>
+        <div class="metric">
+          <div class="label">告警数</div>
+          <div class="value">{{ report.stats.alert_count }}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>协议分布</h2>
+      {% if report.stats.protocol_distribution %}
+      <table>
+        <thead>
+          <tr><th>协议</th><th>事件数</th></tr>
+        </thead>
+        <tbody>
+          {% for protocol, count in report.stats.protocol_distribution.items() %}
+          <tr>
+            <td>{{ protocol }}</td>
+            <td>{{ count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="muted">未识别到已注册协议事件。</div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>攻击告警</h2>
+      {% if report.alerts %}
+      <table>
+        <thead>
+          <tr>
+            <th>规则</th>
+            <th>名称</th>
+            <th>等级</th>
+            <th>置信度</th>
+            <th>描述</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for alert in report.alerts %}
+          <tr>
+            <td>{{ alert.rule_id }}</td>
+            <td>{{ alert.name }}</td>
+            <td class="severity-{{ alert.severity }}">{{ alert.severity }}</td>
+            <td>{{ alert.confidence }}</td>
+            <td>{{ alert.description }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="muted">未命中攻击规则。</div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
+
