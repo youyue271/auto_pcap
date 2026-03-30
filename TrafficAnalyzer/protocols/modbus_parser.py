@@ -8,6 +8,17 @@ from TrafficAnalyzer.protocols.base import BaseProtocolParser
 
 class ModbusProtocolParser(BaseProtocolParser):
     name = "Modbus"
+    description = "解析 Modbus/MBTCP 操作，提取事务ID、功能码、寄存器引用等字段"
+
+    def required_fields(self) -> list[str]:
+        return [
+            "mbtcp.trans_id",
+            "mbtcp.unit_id",
+            "mbtcp.prot_id",
+            "mbtcp.len",
+            "modbus.func_code",
+            "modbus.reference_num",
+        ]
 
     def match(self, packet: PacketRecord) -> bool:
         return "mbtcp" in packet.layers or "modbus" in packet.layers
@@ -29,4 +40,3 @@ class ModbusProtocolParser(BaseProtocolParser):
             dst_ip=packet.dst_ip,
             details=details,
         )
-

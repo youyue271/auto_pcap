@@ -1,14 +1,17 @@
-from TrafficAnalyzer.protocols.base import BaseProtocolParser
-from TrafficAnalyzer.protocols.dns_parser import DNSProtocolParser
-from TrafficAnalyzer.protocols.http_parser import HTTPProtocolParser
-from TrafficAnalyzer.protocols.modbus_parser import ModbusProtocolParser
-from TrafficAnalyzer.protocols.tls_parser import TLSProtocolParser
+from TrafficAnalyzer.protocols import (
+    BaseProtocolParser,
+    DNSProtocolParser,
+    HTTPProtocolParser,
+    ModbusProtocolParser,
+    TLSProtocolParser,
+    build_protocol_parsers,
+)
 
-
-def build_protocol_parsers() -> list[BaseProtocolParser]:
-    return [
-        HTTPProtocolParser(),
-        DNSProtocolParser(),
-        TLSProtocolParser(),
-        ModbusProtocolParser(),
-    ]
+__all__ = [
+    "BaseProtocolParser",
+    "HTTPProtocolParser",
+    "DNSProtocolParser",
+    "TLSProtocolParser",
+    "ModbusProtocolParser",
+    "build_protocol_parsers",
+]

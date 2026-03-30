@@ -9,6 +9,7 @@ from TrafficAnalyzer.core.models import AttackAlert, PacketRecord, ProtocolEvent
 
 class PortScanDetector(BaseAttackDetector):
     name = "PortScanDetector"
+    description = "检测源地址在短时间内访问大量目的端口的扫描行为"
 
     def __init__(self, threshold: int = 10, time_window: float = 5.0):
         self.threshold = threshold
@@ -57,4 +58,3 @@ class PortScanDetector(BaseAttackDetector):
     def reset(self) -> None:
         self.windows.clear()
         self.emitted_bucket.clear()
-

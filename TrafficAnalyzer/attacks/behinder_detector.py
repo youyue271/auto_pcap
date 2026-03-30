@@ -16,6 +16,10 @@ class BehinderDetector(BaseAttackDetector):
     """
 
     name = "BehinderDetector"
+    description = "检测疑似冰蝎WebShell流量（路径、方法、负载与内容类型联合特征）"
+
+    def required_protocols(self) -> list[str]:
+        return ["HTTP"]
 
     _WEBSHELL_PATH = re.compile(r"\.(jsp|jspx|php|aspx?)($|\?)", re.IGNORECASE)
     _BASE64ISH = re.compile(r"^[A-Za-z0-9+/=\s]+$")
@@ -80,4 +84,3 @@ class BehinderDetector(BaseAttackDetector):
             )
 
         return alerts
-

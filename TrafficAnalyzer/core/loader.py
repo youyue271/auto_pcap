@@ -1,8 +1,21 @@
-from typing import Generator, Dict, Any
-import logging
 import asyncio
+import logging
+import math
+import os
+import subprocess
+import tempfile
+from typing import Any, Dict, Generator
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_capinfos_packet_count(output: str) -> int:
+    value = output.strip()
+    if not value:
+        raise ValueError("capinfos 输出为空")
+    if "\t" in value:
+        value = value.split("\t")[-1]
+    return int(value)
 
 def packet_to_dict(packet) -> Dict[str, Any]:
     """
@@ -45,16 +58,25 @@ class PcapLoader:
     def __init__(self, pcap_path: str):
         self.pcap_path = pcap_path
 
+    def get_packet_count(self, allow_estimate: bool = False) -> tuple[int | None, bool]:
+        file_size_bytes = os.path.getsize(self.pcap_path)
+        try:
+            cmd_count = ["capinfos", "-T", "-c", "-r", self.pcap_path]
+            output = subprocess.check_output(cmd_count, text=True).strip()
+            return _parse_capinfos_packet_count(output), False
+        except Exception as exc:
+            if not allow_estimate:
+                logger.warning(f"无法使用 capinfos 获取包数: {exc}")
+                return None, False
+
+            logger.warning(f"无法使用 capinfos 获取包数: {exc}，尝试使用文件大小估算...")
+            return int(file_size_bytes / 800), True
+
     def split_pcap(self, target_chunk_size_mb=0.5) -> list:
         """
         使用 editcap 将 PCAP 文件分割成多个小文件。
         策略: 根据文件大小动态计算切分数量，使每个文件约为 target_chunk_size_mb (默认 0.5MB)。
         """
-        import subprocess
-        import os
-        import glob
-        import math
-        
         # 1. 获取文件大小 (MB)
         file_size_bytes = os.path.getsize(self.pcap_path)
         file_size_mb = file_size_bytes / (1024 * 1024)
@@ -73,34 +95,19 @@ class PcapLoader:
 
         # 3. 获取总包数 (使用 capinfos)
         # capinfos -T -c -r <file>  -> 输出纯数字
-        total_packets = 0
-        try:
-            cmd_count = ["capinfos", "-T", "-c", "-r", self.pcap_path]
-            output = subprocess.check_output(cmd_count).decode().strip()
-            # capinfos -T 可能会输出文件名和数字，例如 "tests/file.pcapng\t7106"
-            # 或者如果只是 -c -r 可能只有数字。
-            # 根据错误日志 "invalid literal for int() with base 10: 'tests/file.pcapng\t7106'"
-            # 我们需要分割字符串
-            if "\t" in output:
-                total_packets = int(output.split("\t")[-1])
-            else:
-                total_packets = int(output)
-        except Exception as e:
-            logger.warning(f"无法使用 capinfos 获取包数: {e}，尝试使用文件大小估算...")
-            # 估算: 假设平均包大小 800 bytes
-            total_packets = int(file_size_bytes / 800)
+        total_packets, estimated = self.get_packet_count(allow_estimate=True)
+        total_packets = total_packets or max(1, int(file_size_bytes / 800))
             
         packets_per_file = math.ceil(total_packets / chunk_count)
-        logger.info(f"总包数: {total_packets}, 每个分块约: {packets_per_file} 包")
+        estimated_tag = " (估算)" if estimated else ""
+        logger.info(f"总包数{estimated_tag}: {total_packets}, 每个分块约: {packets_per_file} 包")
         
-        output_prefix = self.pcap_path.rsplit('.', 1)[0] + "_part"
-        # 清理旧的分割文件
-        for f in glob.glob(f"{output_prefix}*"):
-            try:
-                os.remove(f)
-            except:
-                pass
-                
+        temp_dir = tempfile.mkdtemp(prefix="traffic_pcap_split_")
+        output_prefix = os.path.join(
+            temp_dir,
+            os.path.splitext(os.path.basename(self.pcap_path))[0] + "_part",
+        )
+
         # editcap -c <count> input output
         cmd = ["editcap", "-c", str(packets_per_file), self.pcap_path, output_prefix + ".pcap"]
         logger.info(f"正在分割 PCAP 文件: {' '.join(cmd)}")
@@ -112,13 +119,14 @@ class PcapLoader:
             return [self.pcap_path]
             
         # 获取生成的文件
-        directory = os.path.dirname(self.pcap_path)
+        directory = temp_dir
         base_name = os.path.basename(output_prefix)
-        files = [os.path.join(directory, f) for f in os.listdir(directory) if f.startswith(base_name) and f.endswith(".pcap")]
-        
-        if not files:
-             files = glob.glob(f"{output_prefix}*")
-             
+        files = [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if f.startswith(base_name) and f.endswith(".pcap")
+        ]
+
         files = [f for f in files if f != self.pcap_path]
         
         # 按名称排序确保顺序

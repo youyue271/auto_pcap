@@ -17,3 +17,8 @@ class BaseProtocolParser(ABC):
     def parse(self, packet: PacketRecord) -> Optional[ProtocolEvent]:
         pass
 
+    def required_fields(self) -> list[str]:
+        """
+        返回该协议解析器在 fast path 下需要的 tshark 字段。
+        """
+        return []

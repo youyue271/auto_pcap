@@ -3,93 +3,1324 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TrafficAnalyzer</title>
+  <title>TrafficAnalyzer Workbench</title>
   <style>
     :root {
-      --bg-1: #0b1220;
-      --bg-2: #12324a;
-      --card: #f5f7fb;
-      --text: #0f172a;
-      --accent: #f59e0b;
-      --accent-2: #0ea5e9;
+      --bg1: #081427;
+      --bg2: #0c3049;
+      --panel: #10213a;
+      --panel-border: rgba(255, 255, 255, .14);
+      --text: #e2ecfb;
+      --muted: #9db4d4;
+      --line: rgba(255, 255, 255, .12);
+      --card: #152d4a;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --info: #38bdf8;
     }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      min-height: 100vh;
       font-family: "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 10% 10%, #1e3a8a 0%, transparent 45%),
-        radial-gradient(circle at 90% 90%, #0f766e 0%, transparent 40%),
-        linear-gradient(135deg, var(--bg-1), var(--bg-2));
+        radial-gradient(circle at 8% 12%, rgba(30, 64, 175, .45), transparent 38%),
+        radial-gradient(circle at 92% 88%, rgba(14, 165, 233, .28), transparent 34%),
+        linear-gradient(145deg, var(--bg1), var(--bg2));
+      padding: 10px;
+      overflow: hidden;
+    }
+    .app-shell {
+      height: calc(100vh - 20px);
+      max-width: 1860px;
+      margin: 0 auto;
       display: grid;
-      place-items: center;
-      padding: 24px;
-      box-sizing: border-box;
+      grid-template-rows: auto 8px minmax(0, 1fr);
+      gap: 0;
     }
     .panel {
-      width: min(760px, 100%);
-      background: var(--card);
-      border-radius: 18px;
-      padding: 32px;
-      box-shadow: 0 18px 55px rgba(0, 0, 0, 0.35);
-    }
-    h1 {
-      margin: 0;
-      font-size: clamp(24px, 4vw, 40px);
-      line-height: 1.1;
-    }
-    p {
-      color: #334155;
-      margin-top: 12px;
-    }
-    .badge {
-      display: inline-block;
-      margin-top: 10px;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      color: white;
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-size: 13px;
-      letter-spacing: .5px;
-    }
-    form {
-      margin-top: 24px;
-      display: grid;
-      gap: 14px;
-    }
-    input[type="file"] {
-      border: 1px dashed #94a3b8;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
       border-radius: 12px;
-      padding: 14px;
-      background: white;
+      box-shadow: 0 12px 26px rgba(0, 0, 0, .22);
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
-    button {
-      border: 0;
-      border-radius: 10px;
-      padding: 12px 18px;
-      background: #0f172a;
-      color: #fff;
+    .panel-hd {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(2, 6, 23, .3);
+      flex: 0 0 auto;
+    }
+    .panel-hd h2, .panel-hd h3 {
+      margin: 0;
       font-size: 15px;
-      cursor: pointer;
-      transition: transform .15s ease, box-shadow .15s ease;
+      letter-spacing: .25px;
     }
-    button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
+    .panel-bd {
+      padding: 10px 12px;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    .top-panel {
+      min-height: 186px;
+    }
+    .top-panel .panel-bd {
+      display: grid;
+      grid-template-rows: auto auto auto minmax(64px, auto);
+      gap: 7px;
+      overflow: auto;
+    }
+    .run-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+      align-items: end;
+    }
+    .field { display: grid; gap: 5px; }
+    .field label { font-size: 12px; color: var(--muted); }
+    input[type="file"], input[type="number"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .35);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid rgba(125, 211, 252, .38);
+      border-radius: 9px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: #fff;
+      font-size: 13px;
+      background: linear-gradient(120deg, #0f172a, #1d4ed8);
+    }
+    .btn.secondary {
+      background: rgba(2, 6, 23, .38);
+      border-color: var(--line);
+    }
+    .status {
+      display: inline-flex;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .status.wait { border-color: rgba(56, 189, 248, .45); color: #7dd3fc; background: rgba(56, 189, 248, .12); }
+    .status.run { border-color: rgba(245, 158, 11, .45); color: #fcd34d; background: rgba(245, 158, 11, .12); }
+    .status.ok { border-color: rgba(34, 197, 94, .45); color: #86efac; background: rgba(34, 197, 94, .12); }
+    .status.err { border-color: rgba(239, 68, 68, .45); color: #fca5a5; background: rgba(239, 68, 68, .12); }
+    .top-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 8px;
+      font-size: 12px;
+    }
+    .meta-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 8px;
+      background: rgba(2, 6, 23, .25);
+    }
+    .meta-item .k { color: var(--muted); }
+    .meta-item .v { margin-top: 3px; word-break: break-all; }
+    .steps {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 6px;
+    }
+    .steps li {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 7px;
+      font-size: 12px;
+      background: rgba(2, 6, 23, .3);
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .steps li.running { border-color: rgba(245, 158, 11, .65); }
+    .steps li.done { border-color: rgba(34, 197, 94, .6); }
+    .steps li.error { border-color: rgba(239, 68, 68, .68); }
+    .tag { color: var(--muted); font-size: 11px; }
+    .console {
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(2, 6, 23, .72);
+      min-height: 68px;
+      max-height: 90px;
+      overflow: auto;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .resizer {
+      position: relative;
+      background: rgba(148, 163, 184, .2);
+      transition: background .15s ease;
+      z-index: 2;
+    }
+    .resizer:hover {
+      background: rgba(56, 189, 248, .45);
+    }
+    .resizer.horizontal {
+      height: 8px;
+      cursor: row-resize;
+      border-radius: 6px;
+      margin: 2px 4px;
+    }
+    .resizer.vertical {
+      width: 8px;
+      cursor: col-resize;
+      border-radius: 6px;
+      margin: 4px 0;
+    }
+
+    .board {
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 25% 8px 25% 8px 50%;
+      gap: 0;
+    }
+    details.catalog {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(2, 6, 23, .24);
+      margin-bottom: 9px;
+      overflow: hidden;
+    }
+    details.catalog > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 8px 9px;
+      background: rgba(2, 6, 23, .45);
+      border-bottom: 1px solid var(--line);
+      color: #bfdbfe;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    details.catalog > summary::-webkit-details-marker { display: none; }
+    .catalog-body { padding: 8px; display: grid; gap: 8px; }
+    .module-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(2, 6, 23, .34);
+      cursor: grab;
+    }
+    .module-item:active { cursor: grabbing; }
+    .module-item h4 { margin: 0 0 4px; font-size: 13px; }
+    .module-item p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .module-item .type {
+      display: inline-block;
+      margin-bottom: 5px;
+      font-size: 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 7px;
+      color: #bfdbfe;
+    }
+    .drop-zone {
+      border: 2px dashed rgba(125, 211, 252, .3);
+      border-radius: 10px;
+      padding: 8px;
+      margin-bottom: 8px;
+      min-height: 110px;
+      background: rgba(2, 6, 23, .25);
+    }
+    .drop-zone.active {
+      border-color: rgba(56, 189, 248, .8);
+      background: rgba(56, 189, 248, .12);
+    }
+    .active-module {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      margin-bottom: 7px;
+      background: rgba(2, 6, 23, .36);
+    }
+    .active-module .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .active-module .name { font-size: 13px; font-weight: 700; }
+    .active-module .meta { color: var(--muted); font-size: 12px; }
+    .tiny-btn {
+      border: 1px solid rgba(239, 68, 68, .45);
+      color: #fca5a5;
+      background: rgba(239, 68, 68, .14);
+      border-radius: 8px;
+      font-size: 11px;
+      padding: 3px 7px;
+      cursor: pointer;
+    }
+    .toolbar {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .tab-btn {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: rgba(2, 6, 23, .3);
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      border-color: rgba(56, 189, 248, .5);
+      background: rgba(29, 78, 216, .25);
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .grid3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--card);
+      padding: 8px;
+    }
+    .metric .k { font-size: 12px; color: var(--muted); }
+    .metric .v { font-size: 22px; margin-top: 3px; font-weight: 700; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    th, td {
+      text-align: left;
+      padding: 6px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      word-break: break-word;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    details.data {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px;
+      background: rgba(2, 6, 23, .34);
+      margin-bottom: 8px;
+    }
+    details.data summary { cursor: pointer; color: #bfdbfe; font-size: 13px; }
+    .raw {
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(2, 6, 23, .72);
+      max-height: 560px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .muted { color: var(--muted); }
+
+    @media (max-width: 1050px) {
+      body { padding: 6px; }
+      .app-shell { height: calc(100vh - 12px); grid-template-rows: auto 8px minmax(420px, 1fr); }
+      .board { grid-template-columns: 1fr; grid-auto-rows: minmax(260px, 1fr); }
+      .resizer.vertical { display: none; }
     }
   </style>
 </head>
 <body>
-  <main class="panel">
-    <h1>TrafficAnalyzer 流量安全分析</h1>
-    <p>上传 PCAP 后自动执行三阶段分析：包解析、协议解析、攻击检测。</p>
-    <span class="badge">Packet Parsing · Protocol Parsing · Attack Detection</span>
-    <form method="post" action="/analyze" enctype="multipart/form-data">
-      <input name="pcap_file" type="file" accept=".pcap,.pcapng,.cap" required>
-      <button type="submit">开始分析</button>
-    </form>
-  </main>
+  <div class="app-shell" id="app-shell">
+    <section class="panel top-panel" id="top-panel">
+      <div class="panel-hd">
+        <h2>运行与调试</h2>
+        <span class="status wait" id="run-status">等待文件</span>
+      </div>
+      <div class="panel-bd">
+        <form id="run-form" class="run-grid">
+          <div class="field">
+            <label for="pcap-file">PCAP 文件（选择后自动开始基础解析）</label>
+            <input id="pcap-file" type="file" accept=".pcap,.pcapng,.cap" required>
+          </div>
+          <div class="field">
+            <label for="max-packets">最大包数</label>
+            <input id="max-packets" type="number" min="1" placeholder="全部">
+          </div>
+          <div class="field">
+            <label>快捷操作</label>
+            <div class="actions">
+              <button class="btn secondary" id="restart-btn" type="button">重新基础解析</button>
+              <button class="btn secondary" id="clear-active-btn" type="button">清空解析栏目</button>
+              <button class="btn secondary" id="clear-log-btn" type="button">清空日志</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="top-meta">
+          <div class="meta-item"><div class="k">文件名</div><div class="v" id="meta-file-name">-</div></div>
+          <div class="meta-item"><div class="k">大小</div><div class="v" id="meta-file-size">-</div></div>
+          <div class="meta-item"><div class="k">修改时间</div><div class="v" id="meta-file-time">-</div></div>
+          <div class="meta-item"><div class="k">总 Packet</div><div class="v" id="meta-total-packet-count">-</div></div>
+          <div class="meta-item"><div class="k">已解析 Packet</div><div class="v" id="meta-packet-count">0</div></div>
+          <div class="meta-item"><div class="k">解析进度</div><div class="v" id="meta-parse-progress">0 / -</div></div>
+          <div class="meta-item"><div class="k">解析栏目模块数</div><div class="v" id="meta-module-count">0</div></div>
+        </div>
+
+        <ul class="steps">
+          <li id="step-upload"><span>上传</span><span class="tag">pending</span></li>
+          <li id="step-parse"><span>基础解析</span><span class="tag">pending</span></li>
+          <li id="step-protocol"><span>协议模块</span><span class="tag">pending</span></li>
+          <li id="step-attack"><span>攻击模块</span><span class="tag">pending</span></li>
+          <li id="step-render"><span>结果渲染</span><span class="tag">pending</span></li>
+        </ul>
+
+        <pre id="console-box" class="console">[INFO] 等待任务...</pre>
+      </div>
+    </section>
+
+    <div class="resizer horizontal" id="h-resizer"></div>
+
+    <section class="board" id="board">
+      <section class="panel">
+        <div class="panel-hd">
+          <h3>模块库</h3>
+          <span class="muted" id="module-count">0 modules</span>
+        </div>
+        <div class="panel-bd">
+          <details class="catalog" open>
+            <summary>协议解析模块</summary>
+            <div id="protocol-library" class="catalog-body"></div>
+          </details>
+          <details class="catalog" open>
+            <summary>攻击检测模块</summary>
+            <div id="attack-library" class="catalog-body"></div>
+          </details>
+        </div>
+      </section>
+
+      <div class="resizer vertical" id="v-resizer-left"></div>
+
+      <section class="panel">
+        <div class="panel-hd">
+          <h3>解析栏目</h3>
+          <span class="muted" id="active-count">0 active</span>
+        </div>
+        <div class="panel-bd">
+          <div id="drop-zone" class="drop-zone">
+            <div class="muted" style="font-size:12px;">拖动左侧模块到这里。拖入即注册解析；若无文件则等待文件基础解析完成后启动。</div>
+          </div>
+          <div id="active-module-list"></div>
+        </div>
+      </section>
+
+      <div class="resizer vertical" id="v-resizer-right"></div>
+
+      <section class="panel">
+        <div class="panel-hd">
+          <h3>结果工作区</h3>
+          <span class="muted">按模块分栏展示结果</span>
+        </div>
+        <div class="panel-bd">
+          <div id="result-tabs" class="toolbar"></div>
+          <div id="result-panes"></div>
+        </div>
+      </section>
+    </section>
+  </div>
+
+  <script>
+    const appShell = document.getElementById("app-shell");
+    const board = document.getElementById("board");
+    const topPanel = document.getElementById("top-panel");
+    const hResizer = document.getElementById("h-resizer");
+    const vResizerLeft = document.getElementById("v-resizer-left");
+    const vResizerRight = document.getElementById("v-resizer-right");
+
+    const protocolLibrary = document.getElementById("protocol-library");
+    const attackLibrary = document.getElementById("attack-library");
+    const moduleCountEl = document.getElementById("module-count");
+    const activeListEl = document.getElementById("active-module-list");
+    const activeCountEl = document.getElementById("active-count");
+    const metaModuleCountEl = document.getElementById("meta-module-count");
+    const dropZone = document.getElementById("drop-zone");
+
+    const fileInput = document.getElementById("pcap-file");
+    const maxPacketsInput = document.getElementById("max-packets");
+    const runStatus = document.getElementById("run-status");
+    const consoleBox = document.getElementById("console-box");
+
+    const restartBtn = document.getElementById("restart-btn");
+    const clearActiveBtn = document.getElementById("clear-active-btn");
+    const clearLogBtn = document.getElementById("clear-log-btn");
+
+    const resultTabs = document.getElementById("result-tabs");
+    const resultPanes = document.getElementById("result-panes");
+
+    const ruleMap = {
+      PortScanDetector: "ATTACK.PORT_SCAN",
+      SQLInjectionDetector: "ATTACK.SQL_INJECTION",
+      BehinderDetector: "ATTACK.BEHINDER",
+    };
+
+    let moduleCatalog = { protocols: [], attacks: [] };
+    let activeModules = [];
+    let currentJobId = null;
+    let pollingTimer = null;
+    let lastRevision = -1;
+    let lastResultsRevision = -1;
+    let latestStatus = null;
+    let latestResults = null;
+    let lastLoggedTotalPackets = null;
+
+    const layout = {
+      left: 25,
+      mid: 25,
+      right: 50,
+      topManual: false,
+      topPx: null,
+    };
+
+    function log(msg, level = "INFO") {
+      const ts = new Date().toLocaleTimeString();
+      consoleBox.textContent += `\n[${level}] ${ts} ${msg}`;
+      consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+
+    function setStatus(text, mode) {
+      runStatus.textContent = text;
+      runStatus.className = `status ${mode}`;
+    }
+
+    function setStep(step, state) {
+      const row = document.getElementById(`step-${step}`);
+      if (!row) return;
+      row.classList.remove("running", "done", "error");
+      const tag = row.querySelector(".tag");
+      if (state === "running") {
+        row.classList.add("running");
+        tag.textContent = "running";
+      } else if (state === "done") {
+        row.classList.add("done");
+        tag.textContent = "done";
+      } else if (state === "error") {
+        row.classList.add("error");
+        tag.textContent = "error";
+      } else {
+        tag.textContent = "pending";
+      }
+    }
+
+    function resetSteps() {
+      ["upload", "parse", "protocol", "attack", "render"].forEach((s) => setStep(s, "pending"));
+    }
+
+    function esc(s) {
+      return String(s ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes && bytes !== 0) return "-";
+      const units = ["B", "KB", "MB", "GB"];
+      let v = bytes;
+      let i = 0;
+      while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i += 1;
+      }
+      return `${v.toFixed(2)} ${units[i]}`;
+    }
+
+    function formatCount(value, estimated = false) {
+      if (value == null) return "-";
+      const prefix = estimated ? "~" : "";
+      return `${prefix}${Number(value).toLocaleString()}`;
+    }
+
+    function formatParseProgress(job) {
+      const parsed = Number(job.packet_count || 0);
+      const total = job.target_packet_count;
+      const updatedAt = job.progress_updated_at
+        ? new Date(job.progress_updated_at).toLocaleTimeString()
+        : null;
+      if (total == null) {
+        return updatedAt ? `${parsed.toLocaleString()} / - · ${updatedAt}` : `${parsed.toLocaleString()} / -`;
+      }
+      const percent = job.progress?.percent != null ? `${job.progress.percent.toFixed(2)}%` : "-";
+      const base = `${parsed.toLocaleString()} / ${Number(total).toLocaleString()} (${percent})`;
+      return updatedAt ? `${base} · ${updatedAt}` : base;
+    }
+
+    function moduleId(module) {
+      return `${module.type}:${module.name}`;
+    }
+
+    function clamp(num, min, max) {
+      return Math.min(Math.max(num, min), max);
+    }
+
+    function applyBoardLayout() {
+      board.style.gridTemplateColumns = `${layout.left}% 8px ${layout.mid}% 8px ${layout.right}%`;
+    }
+
+    function applyTopLayout() {
+      if (!layout.topManual || layout.topPx == null) {
+        appShell.style.gridTemplateRows = "auto 8px minmax(0, 1fr)";
+        return;
+      }
+      appShell.style.gridTemplateRows = `${layout.topPx}px 8px minmax(0, 1fr)`;
+    }
+
+    function initResizers() {
+      let dragMode = null;
+      let startX = 0;
+      let startY = 0;
+      let startLeft = 0;
+      let startMid = 0;
+      let startRight = 0;
+      let startTopPx = 0;
+
+      const onMove = (e) => {
+        if (!dragMode) return;
+        if (dragMode === "left") {
+          const rect = board.getBoundingClientRect();
+          const usable = rect.width - 16;
+          const deltaPct = ((e.clientX - startX) / usable) * 100;
+          let left = clamp(startLeft + deltaPct, 15, 70);
+          let mid = startMid - deltaPct;
+          if (mid < 15) {
+            mid = 15;
+            left = 100 - layout.right - mid;
+          }
+          if (left < 15) left = 15;
+          layout.left = left;
+          layout.mid = mid;
+          layout.right = 100 - left - mid;
+          if (layout.right < 20) {
+            layout.right = 20;
+            layout.mid = 100 - layout.left - layout.right;
+          }
+          applyBoardLayout();
+        } else if (dragMode === "right") {
+          const rect = board.getBoundingClientRect();
+          const usable = rect.width - 16;
+          const deltaPct = ((e.clientX - startX) / usable) * 100;
+          let mid = clamp(startMid + deltaPct, 15, 70);
+          let right = startRight - deltaPct;
+          if (right < 20) {
+            right = 20;
+            mid = 100 - layout.left - right;
+          }
+          if (mid < 15) mid = 15;
+          layout.mid = mid;
+          layout.right = 100 - layout.left - mid;
+          applyBoardLayout();
+        } else if (dragMode === "horizontal") {
+          const rect = appShell.getBoundingClientRect();
+          const minTop = Math.max(186, topPanel.scrollHeight + 4);
+          const maxTop = rect.height - 230;
+          const next = clamp(startTopPx + (e.clientY - startY), minTop, maxTop);
+          layout.topManual = true;
+          layout.topPx = next;
+          applyTopLayout();
+        }
+      };
+
+      const onUp = () => {
+        dragMode = null;
+        document.body.style.userSelect = "";
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+
+      vResizerLeft.addEventListener("mousedown", (e) => {
+        if (window.innerWidth <= 1050) return;
+        dragMode = "left";
+        startX = e.clientX;
+        startLeft = layout.left;
+        startMid = layout.mid;
+        document.body.style.userSelect = "none";
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+
+      vResizerRight.addEventListener("mousedown", (e) => {
+        if (window.innerWidth <= 1050) return;
+        dragMode = "right";
+        startX = e.clientX;
+        startMid = layout.mid;
+        startRight = layout.right;
+        document.body.style.userSelect = "none";
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+
+      hResizer.addEventListener("mousedown", (e) => {
+        dragMode = "horizontal";
+        startY = e.clientY;
+        startTopPx = topPanel.getBoundingClientRect().height;
+        document.body.style.userSelect = "none";
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+
+      window.addEventListener("resize", () => {
+        if (window.innerWidth <= 1050) {
+          board.style.gridTemplateColumns = "1fr";
+        } else {
+          applyBoardLayout();
+        }
+        applyTopLayout();
+      });
+    }
+
+    function renderLibrary() {
+      protocolLibrary.innerHTML = "";
+      attackLibrary.innerHTML = "";
+      const total = (moduleCatalog.protocols || []).length + (moduleCatalog.attacks || []).length;
+      moduleCountEl.textContent = `${total} modules`;
+
+      for (const item of moduleCatalog.protocols || []) {
+        protocolLibrary.appendChild(createModuleCard("protocol", item));
+      }
+      for (const item of moduleCatalog.attacks || []) {
+        attackLibrary.appendChild(createModuleCard("attack", item));
+      }
+    }
+
+    function createModuleCard(type, item) {
+      const el = document.createElement("div");
+      el.className = "module-item";
+      el.draggable = true;
+      el.dataset.type = type;
+      el.dataset.name = item.name;
+      el.dataset.description = item.description || "";
+      el.innerHTML = `
+        <span class="type">${type}</span>
+        <h4>${esc(item.name)}</h4>
+        <p>${esc(item.description || "")}</p>
+      `;
+      el.addEventListener("dragstart", (e) => {
+        const payload = { type, name: item.name, description: item.description || "" };
+        e.dataTransfer.setData("application/json", JSON.stringify(payload));
+        e.dataTransfer.effectAllowed = "copy";
+      });
+      return el;
+    }
+
+    function renderActiveModules() {
+      activeListEl.innerHTML = "";
+      activeCountEl.textContent = `${activeModules.length} active`;
+      metaModuleCountEl.textContent = String(activeModules.length);
+
+      if (!activeModules.length) {
+        activeListEl.innerHTML = `<div class="muted" style="font-size:12px;">暂无模块。拖入模块后即可按模块生成结果栏。</div>`;
+      }
+
+      for (const module of activeModules) {
+        const card = document.createElement("div");
+        card.className = "active-module";
+        card.innerHTML = `
+          <div class="row">
+            <div class="name">${esc(module.name)}</div>
+            <button class="tiny-btn" type="button" data-id="${esc(moduleId(module))}">移除</button>
+          </div>
+          <div class="meta">type=${esc(module.type)} · state=${esc(module.state || "pending")}</div>
+        `;
+        activeListEl.appendChild(card);
+      }
+
+      activeListEl.querySelectorAll("button[data-id]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.dataset.id;
+          removeActiveModuleById(id);
+        });
+      });
+    }
+
+    async function removeActiveModuleById(id) {
+      const target = activeModules.find((m) => moduleId(m) === id);
+      if (!target) return;
+
+      if (currentJobId) {
+        try {
+          const formData = new FormData();
+          formData.append("module_type", target.type);
+          formData.append("module_name", target.name);
+          await fetch(`/api/jobs/${currentJobId}/modules/remove`, { method: "POST", body: formData });
+          log(`模块已停止: ${target.name}`);
+        } catch (err) {
+          log(`停止模块失败: ${target.name}`, "ERROR");
+        }
+      }
+
+      activeModules = activeModules.filter((m) => moduleId(m) !== id);
+      renderActiveModules();
+      renderWorkspace();
+    }
+
+    function setupDropZone() {
+      ["dragenter", "dragover"].forEach((name) => {
+        dropZone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropZone.classList.add("active");
+        });
+      });
+      ["dragleave", "drop"].forEach((name) => {
+        dropZone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropZone.classList.remove("active");
+        });
+      });
+
+      dropZone.addEventListener("drop", async (e) => {
+        const raw = e.dataTransfer.getData("application/json");
+        if (!raw) return;
+        try {
+          const module = JSON.parse(raw);
+          if (!module.type || !module.name) return;
+          await addActiveModule(module);
+        } catch (err) {
+          log(`拖放解析失败: ${err.message || err}`, "ERROR");
+        }
+      });
+    }
+
+    async function addActiveModule(module) {
+      if (activeModules.some((m) => moduleId(m) === moduleId(module))) {
+        log(`模块已存在: ${module.name}`, "WARN");
+        return;
+      }
+
+      const item = {
+        type: module.type,
+        name: module.name,
+        description: module.description || "",
+        state: currentJobId ? "pending" : "waiting_file",
+      };
+      activeModules.push(item);
+      renderActiveModules();
+      renderWorkspace();
+      log(`已加入解析栏目: ${module.name}`);
+
+      if (currentJobId) {
+        await startModuleOnServer(item);
+      }
+    }
+
+    async function startModuleOnServer(module) {
+      if (!currentJobId) {
+        module.state = "waiting_file";
+        renderActiveModules();
+        return;
+      }
+      try {
+        const formData = new FormData();
+        formData.append("module_type", module.type);
+        formData.append("module_name", module.name);
+        const resp = await fetch(`/api/jobs/${currentJobId}/modules/add`, { method: "POST", body: formData });
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || "模块启动失败");
+        }
+        module.state = payload.module.status || "pending";
+        renderActiveModules();
+        log(`模块已启动: ${module.name}`);
+      } catch (err) {
+        module.state = "error";
+        renderActiveModules();
+        log(`模块启动失败: ${module.name} ${err.message || err}`, "ERROR");
+      }
+    }
+
+    function stopPolling() {
+      if (pollingTimer) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      pollingTimer = setInterval(pollOnce, 1000);
+    }
+
+    async function pollOnce() {
+      if (!currentJobId) return;
+      try {
+        const resp = await fetch(`/api/jobs/${currentJobId}/status`);
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || "状态查询失败");
+        }
+        latestStatus = payload;
+        const job = payload.job;
+
+        const totalPacketCountEl = document.getElementById("meta-total-packet-count");
+        const parseProgressEl = document.getElementById("meta-parse-progress");
+        const totalPacketCount = job.source_packet_count ?? job.target_packet_count;
+        document.getElementById("meta-packet-count").textContent = String(job.packet_count || 0);
+        totalPacketCountEl.textContent = formatCount(totalPacketCount, job.source_packet_count_estimated);
+        parseProgressEl.textContent = formatParseProgress(job);
+        updateStepByJob(job);
+        syncModuleStatesFromStatus(job);
+
+        if (totalPacketCount != null && totalPacketCount !== lastLoggedTotalPackets) {
+          lastLoggedTotalPackets = totalPacketCount;
+          log(`基础解析总 Packet 数: ${formatCount(totalPacketCount, job.source_packet_count_estimated)}`);
+        }
+
+        if (job.revision !== lastRevision) {
+          lastRevision = job.revision;
+          await fetchResults(job.revision);
+        }
+      } catch (err) {
+        log(`轮询失败: ${err.message || err}`, "ERROR");
+      }
+    }
+
+    async function fetchResults(revisionHint) {
+      if (!currentJobId) return;
+      try {
+        const resp = await fetch(`/api/jobs/${currentJobId}/results`);
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || "结果查询失败");
+        }
+        latestResults = payload;
+        lastResultsRevision = payload.revision ?? revisionHint ?? lastResultsRevision;
+        renderWorkspace();
+        setStep("render", "done");
+      } catch (err) {
+        log(`读取结果失败: ${err.message || err}`, "ERROR");
+      }
+    }
+
+    function updateStepByJob(job) {
+      setStep("upload", "done");
+
+      if (job.status === "parsing") {
+        setStatus("基础解析中", "run");
+        setStep("parse", "running");
+      } else if (job.status === "parsed") {
+        setStep("parse", "done");
+      } else if (job.status === "error") {
+        setStatus("基础解析失败", "err");
+        setStep("parse", "error");
+        if (job.parse_error) log(`基础解析错误: ${job.parse_error}`, "ERROR");
+      }
+
+      const moduleMap = {};
+      for (const m of job.modules || []) {
+        moduleMap[`${m.module_type}:${m.module_name}`] = m.status;
+      }
+
+      const protocolStates = activeModules.filter((m) => m.type === "protocol").map((m) => moduleMap[moduleId(m)] || m.state);
+      const attackStates = activeModules.filter((m) => m.type === "attack").map((m) => moduleMap[moduleId(m)] || m.state);
+
+      applyModuleStep("protocol", protocolStates);
+      applyModuleStep("attack", attackStates);
+
+      const hasError = [...protocolStates, ...attackStates].includes("error");
+      const hasRunning = [...protocolStates, ...attackStates].some((s) => s === "running" || s === "pending" || s === "waiting_file");
+      if (job.status === "parsed" && !hasRunning && !hasError) {
+        setStatus("完成", "ok");
+      } else if (hasError) {
+        setStatus("部分错误", "err");
+      } else if (job.status === "parsing" || hasRunning) {
+        setStatus("运行中", "run");
+      }
+    }
+
+    function applyModuleStep(stepName, states) {
+      if (!states.length) {
+        setStep(stepName, "done");
+        return;
+      }
+      if (states.some((s) => s === "error")) {
+        setStep(stepName, "error");
+        return;
+      }
+      if (states.some((s) => s === "running" || s === "pending" || s === "waiting_file")) {
+        setStep(stepName, "running");
+        return;
+      }
+      setStep(stepName, "done");
+    }
+
+    function syncModuleStatesFromStatus(job) {
+      const map = {};
+      for (const module of job.modules || []) {
+        map[`${module.module_type}:${module.module_name}`] = module.status;
+      }
+      for (const item of activeModules) {
+        const status = map[moduleId(item)];
+        if (status) item.state = status;
+      }
+      renderActiveModules();
+    }
+
+    async function startBaseJob() {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        log("请选择文件", "WARN");
+        return;
+      }
+
+      stopPolling();
+      latestStatus = null;
+      latestResults = null;
+      lastRevision = -1;
+      lastResultsRevision = -1;
+      currentJobId = null;
+      lastLoggedTotalPackets = null;
+      document.getElementById("meta-total-packet-count").textContent = "-";
+      document.getElementById("meta-packet-count").textContent = "0";
+      document.getElementById("meta-parse-progress").textContent = "0 / -";
+      resetSteps();
+      setStep("upload", "running");
+      setStep("parse", "running");
+      setStep("protocol", "pending");
+      setStep("attack", "pending");
+      setStep("render", "pending");
+      setStatus("上传中", "run");
+
+      try {
+        const formData = new FormData();
+        formData.append("pcap_file", file);
+        if (maxPacketsInput.value) formData.append("max_packets", maxPacketsInput.value);
+
+        const resp = await fetch("/api/jobs/start", { method: "POST", body: formData });
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || "任务创建失败");
+        }
+
+        currentJobId = payload.job_id;
+        setStep("upload", "done");
+        setStatus("基础解析中", "run");
+        log(`任务创建成功: job_id=${currentJobId}`);
+
+        for (const module of activeModules) {
+          await startModuleOnServer(module);
+        }
+
+        startPolling();
+      } catch (err) {
+        setStatus("启动失败", "err");
+        setStep("upload", "error");
+        setStep("parse", "error");
+        log(`任务启动失败: ${err.message || err}`, "ERROR");
+      }
+    }
+
+    function renderWorkspace() {
+      const tabs = [
+        { id: "overview", title: "总览" },
+        { id: "debug", title: "调试" },
+        { id: "raw", title: "Raw JSON" },
+      ];
+      for (const module of activeModules) {
+        tabs.push({
+          id: `module-${module.type}-${module.name}`,
+          title: `${module.type === "protocol" ? "协议" : "攻击"}:${module.name}`,
+          module,
+        });
+      }
+
+      const activeTab = resultTabs.querySelector(".tab-btn.active")?.dataset.tab || "overview";
+      resultTabs.innerHTML = "";
+      resultPanes.innerHTML = "";
+      for (const tab of tabs) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tab-btn";
+        btn.dataset.tab = tab.id;
+        btn.textContent = tab.title;
+        btn.addEventListener("click", () => switchTab(tab.id));
+        resultTabs.appendChild(btn);
+
+        const pane = document.createElement("div");
+        pane.id = `pane-${tab.id}`;
+        pane.className = "tab-pane";
+        resultPanes.appendChild(pane);
+      }
+
+      renderOverviewPane();
+      renderDebugPane();
+      renderRawPane();
+      renderModulePanes();
+
+      switchTab(tabs.some((t) => t.id === activeTab) ? activeTab : "overview");
+    }
+
+    function switchTab(tabId) {
+      resultTabs.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tab === tabId);
+      });
+      resultPanes.querySelectorAll(".tab-pane").forEach((pane) => {
+        pane.classList.toggle("active", pane.id === `pane-${tabId}`);
+      });
+    }
+
+    function renderOverviewPane() {
+      const pane = document.getElementById("pane-overview");
+      const job = latestStatus?.job;
+      const overview = job?.overview || {};
+      const progress = job?.progress || {};
+      const progressText = job ? formatParseProgress(job) : "0 / -";
+      const totalPacketText = formatCount(job?.source_packet_count ?? job?.target_packet_count, job?.source_packet_count_estimated);
+
+      const dist = aggregateProtocolDistribution();
+      const distRows = Object.entries(dist).sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`)
+        .join("") || `<tr><td colspan="2" class="muted">无数据</td></tr>`;
+
+      pane.innerHTML = `
+        <div class="grid3">
+          <div class="metric"><div class="k">总 Packet</div><div class="v">${esc(totalPacketText)}</div></div>
+          <div class="metric"><div class="k">Packet 数</div><div class="v">${overview.packet_count || 0}</div></div>
+          <div class="metric"><div class="k">解析进度</div><div class="v" style="font-size:16px;">${esc(progressText)}</div></div>
+          <div class="metric"><div class="k">协议事件</div><div class="v">${overview.protocol_event_count || 0}</div></div>
+          <div class="metric"><div class="k">攻击告警</div><div class="v">${overview.alert_count || 0}</div></div>
+          <div class="metric"><div class="k">最近刷新</div><div class="v" style="font-size:16px;">${esc(progress.updated_at ? new Date(progress.updated_at).toLocaleTimeString() : "-")}</div></div>
+        </div>
+        <table>
+          <thead><tr><th>协议</th><th>事件数</th></tr></thead>
+          <tbody>${distRows}</tbody>
+        </table>
+      `;
+    }
+
+    function aggregateProtocolDistribution() {
+      const summary = {};
+      for (const module of activeModules) {
+        if (module.type !== "protocol") continue;
+        const m = getModuleResult(module);
+        const detail = m?.result?.detail || {};
+        if (detail.request_count != null) summary[module.name] = Number(detail.request_count || 0);
+        else if (detail.query_count != null) summary[module.name] = Number(detail.query_count || 0);
+        else if (detail.session_count != null) summary[module.name] = Number(detail.session_count || 0);
+        else if (detail.operation_count != null) summary[module.name] = Number(detail.operation_count || 0);
+        else if (detail.record_count != null) summary[module.name] = Number(detail.record_count || 0);
+      }
+      return summary;
+    }
+
+    function renderDebugPane() {
+      const pane = document.getElementById("pane-debug");
+      const rows = [];
+      for (const module of activeModules) {
+        const item = getModuleResult(module);
+        const dbg = item?.result?.debug || {};
+        const stage = dbg.stage_ms || {};
+        rows.push({
+          module: `${module.type}:${module.name}`,
+          total_ms: stage.total ?? "-",
+          parse_ms: stage.protocol_parse ?? "-",
+          detect_ms: stage.attack_detect ?? "-",
+          errors: dbg.error_count ?? "-",
+        });
+      }
+
+      const body = rows.map((r) => `
+        <tr>
+          <td>${esc(r.module)}</td>
+          <td>${esc(r.total_ms)}</td>
+          <td>${esc(r.parse_ms)}</td>
+          <td>${esc(r.detect_ms)}</td>
+          <td>${esc(r.errors)}</td>
+        </tr>
+      `).join("") || `<tr><td colspan="5" class="muted">暂无模块调试数据</td></tr>`;
+
+      pane.innerHTML = `
+        <table>
+          <thead><tr><th>模块</th><th>总耗时(ms)</th><th>协议解析(ms)</th><th>攻击检测(ms)</th><th>异常数</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      `;
+    }
+
+    function renderRawPane() {
+      const pane = document.getElementById("pane-raw");
+      const payload = {
+        status: latestStatus,
+        results: latestResults,
+      };
+      pane.innerHTML = `<pre class="raw">${esc(JSON.stringify(payload, null, 2))}</pre>`;
+    }
+
+    function renderModulePanes() {
+      for (const module of activeModules) {
+        const pane = document.getElementById(`pane-module-${module.type}-${module.name}`);
+        if (!pane) continue;
+        const resultItem = getModuleResult(module);
+        if (!resultItem || !resultItem.result) {
+          pane.innerHTML = `<div class="muted">模块状态: ${esc(module.state || "pending")}，等待结果...</div>`;
+          continue;
+        }
+        if (module.type === "protocol") {
+          renderProtocolPane(pane, module, resultItem.result);
+        } else {
+          renderAttackPane(pane, module, resultItem.result);
+        }
+      }
+    }
+
+    function getModuleResult(module) {
+      const list = latestResults?.modules || [];
+      return list.find((item) => item.module_type === module.type && item.module_name === module.name);
+    }
+
+    function renderProtocolPane(pane, module, result) {
+      const detail = result.detail || {};
+      const topKeys = Object.keys(detail).filter((k) => k.startsWith("top_"));
+      const recordKey = ["requests", "queries", "sessions", "operations", "records"].find((k) => Array.isArray(detail[k]));
+
+      let html = `<div class="muted" style="margin-bottom:8px;">模块 ${esc(module.name)} 已完成解析。</div>`;
+      for (const topKey of topKeys) {
+        const rows = detail[topKey] || [];
+        const body = rows.map((item) => `<tr><td>${esc(item[0])}</td><td>${item[1]}</td></tr>`).join("")
+          || `<tr><td colspan="2" class="muted">无数据</td></tr>`;
+        html += `
+          <details class="data" open>
+            <summary>${esc(topKey)}</summary>
+            <table><thead><tr><th>value</th><th>count</th></tr></thead><tbody>${body}</tbody></table>
+          </details>
+        `;
+      }
+
+      if (recordKey) {
+        const rows = detail[recordKey] || [];
+        if (rows.length) {
+          const cols = Array.from(rows.reduce((set, row) => {
+            Object.keys(row).forEach((k) => set.add(k));
+            return set;
+          }, new Set()));
+          const body = rows.map((row) => `<tr>${cols.map((c) => `<td>${esc(row[c])}</td>`).join("")}</tr>`).join("");
+          html += `
+            <details class="data" open>
+              <summary>${esc(recordKey)} (${rows.length})</summary>
+              <table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
+            </details>
+          `;
+        } else {
+          html += `<div class="muted">记录列表为空</div>`;
+        }
+      }
+
+      pane.innerHTML = html;
+    }
+
+    function renderAttackPane(pane, module, result) {
+      const alerts = result.alerts || [];
+      const expectedRule = ruleMap[module.name];
+      const filtered = expectedRule ? alerts.filter((a) => a.rule_id === expectedRule) : alerts;
+      if (!filtered.length) {
+        pane.innerHTML = `<div class="muted">模块 ${esc(module.name)} 未命中告警。</div>`;
+        return;
+      }
+      const body = filtered.map((alert) => `
+        <tr>
+          <td>${esc(alert.rule_id)}</td>
+          <td>${esc(alert.severity)}</td>
+          <td>${esc(alert.description)}</td>
+          <td><pre style="margin:0;white-space:pre-wrap;font-size:11px;">${esc(JSON.stringify(alert.evidence || {}, null, 2))}</pre></td>
+        </tr>
+      `).join("");
+      pane.innerHTML = `
+        <table>
+          <thead><tr><th>规则ID</th><th>等级</th><th>描述</th><th>证据</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      `;
+    }
+
+    async function loadModuleCatalog() {
+      const resp = await fetch("/api/modules");
+      const payload = await resp.json();
+      if (!resp.ok || !payload.ok) {
+        throw new Error(payload?.detail || "模块加载失败");
+      }
+      moduleCatalog = payload.modules || { protocols: [], attacks: [] };
+      renderLibrary();
+      log(`模块库加载完成: protocols=${moduleCatalog.protocols.length}, attacks=${moduleCatalog.attacks.length}`);
+    }
+
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      document.getElementById("meta-file-name").textContent = file ? file.name : "-";
+      document.getElementById("meta-file-size").textContent = file ? formatBytes(file.size) : "-";
+      document.getElementById("meta-file-time").textContent = file ? new Date(file.lastModified).toLocaleString() : "-";
+      document.getElementById("meta-packet-count").textContent = "0";
+
+      if (!file) return;
+      log(`文件已选择，自动开始基础解析: ${file.name}`);
+      await startBaseJob();
+    });
+
+    restartBtn.addEventListener("click", async () => {
+      if (!fileInput.files || !fileInput.files[0]) {
+        log("请先选择文件", "WARN");
+        return;
+      }
+      log("手动触发重新基础解析");
+      await startBaseJob();
+    });
+
+    clearActiveBtn.addEventListener("click", async () => {
+      const ids = activeModules.map((m) => moduleId(m));
+      for (const id of ids) {
+        await removeActiveModuleById(id);
+      }
+      renderWorkspace();
+      log("解析栏目已清空");
+    });
+
+    clearLogBtn.addEventListener("click", () => {
+      consoleBox.textContent = "[INFO] 日志已清空";
+    });
+
+    document.getElementById("run-form").addEventListener("submit", (e) => e.preventDefault());
+
+    setupDropZone();
+    initResizers();
+    applyBoardLayout();
+    applyTopLayout();
+    renderActiveModules();
+    renderWorkspace();
+    loadModuleCatalog().catch((err) => {
+      setStatus("初始化失败", "err");
+      log(`初始化失败: ${err.message || err}`, "ERROR");
+    });
+  </script>
 </body>
 </html>
-

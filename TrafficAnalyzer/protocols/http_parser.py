@@ -8,6 +8,20 @@ from TrafficAnalyzer.protocols.base import BaseProtocolParser
 
 class HTTPProtocolParser(BaseProtocolParser):
     name = "HTTP"
+    description = "解析 HTTP 请求/响应，提取方法、主机、URI、UA、内容类型与负载预览"
+
+    def required_fields(self) -> list[str]:
+        return [
+            "http.request.method",
+            "http.host",
+            "http.request.uri",
+            "http.request.full_uri",
+            "http.user_agent",
+            "http.content_type",
+            "http.response.code",
+            "http.file_data",
+            "http.request.line",
+        ]
 
     def match(self, packet: PacketRecord) -> bool:
         return "http" in packet.layers or (packet.highest_layer or "").upper() == "HTTP"
@@ -32,4 +46,3 @@ class HTTPProtocolParser(BaseProtocolParser):
             dst_ip=packet.dst_ip,
             details=details,
         )
-

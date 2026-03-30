@@ -8,6 +8,16 @@ from TrafficAnalyzer.protocols.base import BaseProtocolParser
 
 class DNSProtocolParser(BaseProtocolParser):
     name = "DNS"
+    description = "解析 DNS 查询与响应，提取域名、记录类型、返回码等字段"
+
+    def required_fields(self) -> list[str]:
+        return [
+            "dns.qry.name",
+            "dns.qry.type",
+            "dns.resp.name",
+            "dns.flags.rcode",
+            "dns.a",
+        ]
 
     def match(self, packet: PacketRecord) -> bool:
         return "dns" in packet.layers
@@ -29,4 +39,3 @@ class DNSProtocolParser(BaseProtocolParser):
             dst_ip=packet.dst_ip,
             details=details,
         )
-

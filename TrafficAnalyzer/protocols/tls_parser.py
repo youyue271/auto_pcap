@@ -8,6 +8,14 @@ from TrafficAnalyzer.protocols.base import BaseProtocolParser
 
 class TLSProtocolParser(BaseProtocolParser):
     name = "TLS"
+    description = "解析 TLS/SSL 握手信息，提取 SNI、版本和密码套件"
+
+    def required_fields(self) -> list[str]:
+        return [
+            "tls.handshake.extensions_server_name",
+            "tls.record.version",
+            "tls.handshake.ciphersuite",
+        ]
 
     def match(self, packet: PacketRecord) -> bool:
         return "tls" in packet.layers or "ssl" in packet.layers
@@ -30,4 +38,3 @@ class TLSProtocolParser(BaseProtocolParser):
             dst_ip=packet.dst_ip,
             details=details,
         )
-

@@ -9,6 +9,10 @@ from TrafficAnalyzer.core.models import AttackAlert, PacketRecord, ProtocolEvent
 
 class SQLInjectionDetector(BaseAttackDetector):
     name = "SQLInjectionDetector"
+    description = "基于 HTTP 参数/载荷特征匹配 SQL 注入语句模式"
+
+    def required_protocols(self) -> list[str]:
+        return ["HTTP"]
 
     _STRONG_PATTERNS = [
         re.compile(r"\bunion\b.{0,30}\bselect\b", re.IGNORECASE),
@@ -74,4 +78,3 @@ class SQLInjectionDetector(BaseAttackDetector):
                 )
             )
         return alerts
-

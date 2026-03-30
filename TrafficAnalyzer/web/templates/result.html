@@ -158,7 +158,62 @@
       <div class="muted">未命中攻击规则。</div>
       {% endif %}
     </section>
+
+    <section class="panel">
+      <h2>调试信息</h2>
+      {% set debug = report.stats.debug %}
+      {% if debug %}
+      <div class="grid">
+        <div class="metric">
+          <div class="label">总耗时(ms)</div>
+          <div class="value">{{ debug.stage_ms.total }}</div>
+        </div>
+        <div class="metric">
+          <div class="label">吞吐量(pkt/s)</div>
+          <div class="value">{{ debug.throughput.packets_per_second }}</div>
+        </div>
+        <div class="metric">
+          <div class="label">异常数</div>
+          <div class="value">{{ debug.error_count }}</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <table>
+          <thead>
+            <tr><th>阶段</th><th>耗时(ms)</th></tr>
+          </thead>
+          <tbody>
+            {% for stage, value in debug.stage_ms.items() %}
+            <tr>
+              <td>{{ stage }}</td>
+              <td>{{ value }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if debug.errors %}
+      <div style="margin-top:10px;">
+        <table>
+          <thead>
+            <tr><th>阶段</th><th>组件</th><th>错误</th></tr>
+          </thead>
+          <tbody>
+            {% for item in debug.errors %}
+            <tr>
+              <td>{{ item.stage }}</td>
+              <td>{{ item.component }}</td>
+              <td>{{ item.error }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="muted">当前报告无调试信息。</div>
+      {% endif %}
+    </section>
   </main>
 </body>
 </html>
-

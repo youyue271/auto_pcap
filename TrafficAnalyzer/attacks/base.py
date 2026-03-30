@@ -19,3 +19,8 @@ class BaseAttackDetector(ABC):
     def reset(self) -> None:
         return None
 
+    def required_protocols(self) -> list[str]:
+        """
+        返回该攻击检测器依赖的协议名称，用于 fast path 按需拉取字段。
+        """
+        return []
