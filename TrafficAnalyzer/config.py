@@ -1,6 +1,7 @@
 # Threshold for switching to SQLite storage (in bytes)
 # Default: 100MB. If pcap size > this, use SQLite.
 LARGE_PCAP_THRESHOLD = 100 * 1024 * 1024
+PARALLEL_PARSE_MAX_WORKERS = 8
 
 WIRESHARK_FAST_PATH_COMMAND = "tshark"
 WIRESHARK_SPLIT_COMMANDS = ("editcap", "capinfos")

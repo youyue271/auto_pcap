@@ -276,6 +276,72 @@
       padding: 3px 7px;
       cursor: pointer;
     }
+    .tiny-btn.secondary {
+      border-color: rgba(56, 189, 248, .45);
+      color: #bae6fd;
+      background: rgba(56, 189, 248, .12);
+    }
+    .btn:disabled,
+    .tiny-btn:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+    .project-tools {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .project-tools-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .project-tools-row input[type="number"] {
+      width: 96px;
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+    .project-library {
+      display: grid;
+      gap: 8px;
+    }
+    .project-select {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .project-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(2, 6, 23, .34);
+    }
+    .project-item .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .project-item .name {
+      font-size: 13px;
+      font-weight: 700;
+      word-break: break-word;
+    }
+    .project-item .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      margin-bottom: 6px;
+    }
+    .project-item .actions {
+      justify-content: flex-start;
+    }
     .toolbar {
       display: flex;
       gap: 7px;
@@ -414,6 +480,23 @@
         </div>
         <div class="panel-bd">
           <details class="catalog" open>
+            <summary>样本项目</summary>
+            <div class="catalog-body">
+              <div class="project-tools">
+                <div class="project-tools-row">
+                  <button class="tiny-btn secondary" id="project-refresh-btn" type="button">刷新项目</button>
+                  <button class="tiny-btn" id="project-delete-selected-btn" type="button">删除选中</button>
+                  <button class="tiny-btn" id="project-clear-deletable-btn" type="button">清空可删</button>
+                </div>
+                <div class="project-tools-row">
+                  <input id="project-keep-count" type="number" min="0" step="1" value="10" placeholder="10">
+                  <button class="tiny-btn secondary" id="project-prune-btn" type="button">只保留最近 N 个</button>
+                </div>
+              </div>
+              <div id="project-library" class="project-library"></div>
+            </div>
+          </details>
+          <details class="catalog" open>
             <summary>协议解析模块</summary>
             <div id="protocol-library" class="catalog-body"></div>
           </details>
@@ -462,6 +545,12 @@
     const vResizerLeft = document.getElementById("v-resizer-left");
     const vResizerRight = document.getElementById("v-resizer-right");
 
+    const projectLibrary = document.getElementById("project-library");
+    const projectRefreshBtn = document.getElementById("project-refresh-btn");
+    const projectDeleteSelectedBtn = document.getElementById("project-delete-selected-btn");
+    const projectClearDeletableBtn = document.getElementById("project-clear-deletable-btn");
+    const projectPruneBtn = document.getElementById("project-prune-btn");
+    const projectKeepCountInput = document.getElementById("project-keep-count");
     const protocolLibrary = document.getElementById("protocol-library");
     const attackLibrary = document.getElementById("attack-library");
     const moduleCountEl = document.getElementById("module-count");
@@ -488,8 +577,11 @@
       BehinderDetector: "ATTACK.BEHINDER",
     };
 
+    let projectCatalog = [];
+    let selectedProjectIds = new Set();
     let moduleCatalog = { protocols: [], attacks: [] };
     let activeModules = [];
+    let currentProjectId = null;
     let currentJobId = null;
     let pollingTimer = null;
     let lastRevision = -1;
@@ -544,7 +636,9 @@
       return String(s ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;");
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
     }
 
     function formatBytes(bytes) {
@@ -577,6 +671,195 @@
       const percent = job.progress?.percent != null ? `${job.progress.percent.toFixed(2)}%` : "-";
       const base = `${parsed.toLocaleString()} / ${Number(total).toLocaleString()} (${percent})`;
       return updatedAt ? `${base} · ${updatedAt}` : base;
+    }
+
+    function projectStatusMode(status) {
+      if (status === "parsed") return "ok";
+      if (status === "error") return "err";
+      if (status === "parsing" || status === "queued") return "run";
+      return "wait";
+    }
+
+    function compareIsoDesc(left, right) {
+      return String(right || "").localeCompare(String(left || ""));
+    }
+
+    function deriveProjectState(status, modules, parseError) {
+      const items = Array.isArray(modules) ? modules : [];
+      const runningModuleCount = items.filter((item) => item.status === "running").length;
+      const pendingModuleCount = items.filter((item) => item.status === "pending").length;
+      const completedModuleCount = items.filter((item) => item.status === "completed").length;
+      const errorModuleCount = items.filter((item) => item.status === "error").length;
+      const stoppedModuleCount = items.filter((item) => item.status === "stopped").length;
+
+      const latestCompletedModules = items
+        .filter((item) => item.status === "completed")
+        .sort((a, b) => compareIsoDesc(a.finished_at || a.started_at || a.created_at, b.finished_at || b.started_at || b.created_at))
+        .slice(0, 3)
+        .map((item) => ({
+          type: item.module_type,
+          name: item.module_name,
+          finished_at: item.finished_at || null,
+        }));
+
+      const recentErrors = [];
+      if (parseError) {
+        recentErrors.push({
+          scope: "parse",
+          name: "base_parse",
+          message: parseError,
+          at: null,
+        });
+      }
+      recentErrors.push(...items
+        .filter((item) => item.error)
+        .sort((a, b) => compareIsoDesc(a.finished_at || a.started_at || a.created_at, b.finished_at || b.started_at || b.created_at))
+        .slice(0, 3)
+        .map((item) => ({
+          scope: "module",
+          name: item.module_name,
+          message: item.error,
+          at: item.finished_at || item.started_at || item.created_at || null,
+        })));
+
+      let deleteBlockReason = null;
+      if (status === "queued" || status === "parsing") {
+        deleteBlockReason = "基础解析尚未完成";
+      } else if (runningModuleCount > 0) {
+        deleteBlockReason = `仍有 ${runningModuleCount} 个模块运行中`;
+      } else if (pendingModuleCount > 0) {
+        deleteBlockReason = `仍有 ${pendingModuleCount} 个模块待启动`;
+      }
+
+      return {
+        active_module_count: items.length - stoppedModuleCount,
+        running_module_count: runningModuleCount,
+        pending_module_count: pendingModuleCount,
+        completed_module_count: completedModuleCount,
+        error_module_count: errorModuleCount,
+        stopped_module_count: stoppedModuleCount,
+        latest_completed_modules: latestCompletedModules,
+        recent_errors: recentErrors.slice(0, 3),
+        can_delete: !deleteBlockReason,
+        delete_block_reason: deleteBlockReason,
+      };
+    }
+
+    function findModuleDescription(type, name) {
+      const list = type === "protocol" ? (moduleCatalog.protocols || []) : (moduleCatalog.attacks || []);
+      return list.find((item) => item.name === name)?.description || "";
+    }
+
+    function hydrateActiveModulesFromJob(job) {
+      activeModules = (job.modules || []).map((module) => ({
+        type: module.module_type,
+        name: module.module_name,
+        description: findModuleDescription(module.module_type, module.module_name),
+        state: module.status || "pending",
+        progress: module.progress || null,
+      }));
+    }
+
+    function formatModuleProgress(progress) {
+      if (!progress) return "";
+      const processed = Number(progress.processed || 0);
+      const total = progress.total != null ? Number(progress.total) : null;
+      const updatedAt = progress.updated_at ? new Date(progress.updated_at).toLocaleTimeString() : "";
+      if (total != null && Number.isFinite(total) && total > 0) {
+        const percent = progress.percent != null ? `${Number(progress.percent).toFixed(2)}%` : "-";
+        const base = `${processed.toLocaleString()} / ${total.toLocaleString()} (${percent})`;
+        return updatedAt ? `${base} · ${updatedAt}` : base;
+      }
+      const base = processed.toLocaleString();
+      return updatedAt ? `${base} · ${updatedAt}` : base;
+    }
+
+    function applyProjectMeta(project, job) {
+      document.getElementById("meta-file-name").textContent = project?.filename || job?.filename || "-";
+      document.getElementById("meta-file-size").textContent = project?.source_size_bytes != null
+        ? formatBytes(project.source_size_bytes)
+        : "-";
+      document.getElementById("meta-file-time").textContent = project?.created_at
+        ? new Date(project.created_at).toLocaleString()
+        : "-";
+      document.getElementById("meta-total-packet-count").textContent = formatCount(
+        job?.source_packet_count ?? job?.target_packet_count,
+        job?.source_packet_count_estimated,
+      );
+      document.getElementById("meta-packet-count").textContent = String(job?.packet_count || 0);
+      document.getElementById("meta-parse-progress").textContent = job ? formatParseProgress(job) : "0 / -";
+    }
+
+    function clearCurrentProjectView() {
+      currentProjectId = null;
+      currentJobId = null;
+      latestStatus = null;
+      latestResults = null;
+      lastRevision = -1;
+      lastResultsRevision = -1;
+      lastLoggedTotalPackets = null;
+      activeModules = [];
+      stopPolling();
+      document.getElementById("meta-file-name").textContent = "-";
+      document.getElementById("meta-file-size").textContent = "-";
+      document.getElementById("meta-file-time").textContent = "-";
+      document.getElementById("meta-total-packet-count").textContent = "-";
+      document.getElementById("meta-packet-count").textContent = "0";
+      document.getElementById("meta-parse-progress").textContent = "0 / -";
+      resetSteps();
+      setStatus("等待文件", "wait");
+      renderActiveModules();
+      renderWorkspace();
+    }
+
+    function syncProjectCatalogFromJob(job) {
+      if (!job?.project_id) return;
+      const derived = deriveProjectState(job.status, job.modules || [], job.parse_error);
+      const index = projectCatalog.findIndex((item) => item.project_id === job.project_id);
+      const project = {
+        project_id: job.project_id,
+        job_id: job.job_id,
+        filename: job.filename,
+        status: job.status,
+        created_at: job.created_at,
+        started_at: job.started_at,
+        finished_at: job.finished_at,
+        updated_at: job.progress_updated_at || job.finished_at || job.created_at,
+        packet_count: job.packet_count,
+        source_packet_count: job.source_packet_count,
+        target_packet_count: job.target_packet_count,
+        source_size_bytes: job.source_size_bytes,
+        parse_mode: job.parse_mode,
+        parse_error: job.parse_error,
+        module_count: (job.modules || []).length,
+        ...derived,
+      };
+      if (index >= 0) projectCatalog[index] = project;
+      else projectCatalog.unshift(project);
+    }
+
+    function formatProjectCompletedModules(project) {
+      const items = project.latest_completed_modules || [];
+      if (!items.length) return "-";
+      return items.map((item) => item.name).join(", ");
+    }
+
+    function formatProjectErrors(project) {
+      const items = project.recent_errors || [];
+      if (!items.length) return "-";
+      return items.map((item) => {
+        if (item.scope === "parse") return `基础解析: ${item.message}`;
+        return `${item.name}: ${item.message}`;
+      }).join("；");
+    }
+
+    function updateProjectToolbarState() {
+      const selectedCount = selectedProjectIds.size;
+      const deletableCount = projectCatalog.filter((item) => item.can_delete).length;
+      projectDeleteSelectedBtn.disabled = selectedCount === 0;
+      projectDeleteSelectedBtn.textContent = selectedCount > 0 ? `删除选中(${selectedCount})` : "删除选中";
+      projectClearDeletableBtn.disabled = deletableCount === 0;
+      projectPruneBtn.disabled = !projectCatalog.length;
     }
 
     function moduleId(module) {
@@ -716,6 +999,144 @@
       }
     }
 
+    function renderProjectCatalog() {
+      projectLibrary.innerHTML = "";
+      if (!projectCatalog.length) {
+        projectLibrary.innerHTML = `<div class="muted" style="font-size:12px;">暂无样本项目。上传文件后会自动保存到这里。</div>`;
+        updateProjectToolbarState();
+        return;
+      }
+
+      const sorted = [...projectCatalog].sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+      for (const project of sorted) {
+        const card = document.createElement("div");
+        card.className = "project-item";
+        const totalPackets = project.source_packet_count ?? project.target_packet_count;
+        const updatedAt = project.updated_at ? new Date(project.updated_at).toLocaleString() : "-";
+        const isCurrent = currentProjectId === project.project_id;
+        const isSelected = selectedProjectIds.has(project.project_id);
+        const completedModules = formatProjectCompletedModules(project);
+        const errorSummary = formatProjectErrors(project);
+        const deleteHint = project.can_delete ? "可删除" : (project.delete_block_reason || "当前不可删除");
+        card.innerHTML = `
+          <div class="row">
+            <label class="project-select">
+              <input type="checkbox" data-project-select="${esc(project.project_id)}" ${isSelected ? "checked" : ""}>
+              选中
+            </label>
+            <span class="status ${projectStatusMode(project.status)}">${esc(project.status || "unknown")}</span>
+          </div>
+          <div class="name">${esc(project.filename || project.project_id)}</div>
+          <div class="meta">
+            project=${esc(project.project_id)}${isCurrent ? " · 当前" : ""}<br>
+            size=${esc(formatBytes(project.source_size_bytes))} · mode=${esc(project.parse_mode || "-")}<br>
+            packet=${esc(formatCount(totalPackets))} · module=${esc(`${project.completed_module_count || 0}/${project.module_count || 0}`)} · run=${esc(String(project.running_module_count || 0))} · err=${esc(String(project.error_module_count || 0))}<br>
+            last=${esc(completedModules)}<br>
+            error=${esc(errorSummary)}<br>
+            delete=${esc(deleteHint)}<br>
+            updated=${esc(updatedAt)}
+          </div>
+          <div class="actions">
+            <button class="tiny-btn secondary" type="button" data-action="recover" data-project-id="${esc(project.project_id)}">恢复</button>
+            <button class="tiny-btn" type="button" data-action="delete" data-project-id="${esc(project.project_id)}" ${project.can_delete ? "" : "disabled"} title="${esc(deleteHint)}">删除</button>
+          </div>
+        `;
+        projectLibrary.appendChild(card);
+      }
+
+      projectLibrary.querySelectorAll("input[data-project-select]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const projectId = input.dataset.projectSelect;
+          if (!projectId) return;
+          if (input.checked) selectedProjectIds.add(projectId);
+          else selectedProjectIds.delete(projectId);
+          updateProjectToolbarState();
+        });
+      });
+      projectLibrary.querySelectorAll("button[data-action='recover']").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          await recoverProject(btn.dataset.projectId);
+        });
+      });
+      projectLibrary.querySelectorAll("button[data-action='delete']").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          await deleteProject(btn.dataset.projectId);
+        });
+      });
+      updateProjectToolbarState();
+    }
+
+    async function loadProjectCatalog() {
+      const resp = await fetch("/api/projects");
+      const payload = await resp.json();
+      if (!resp.ok || !payload.ok) {
+        throw new Error(payload?.detail || "项目列表加载失败");
+      }
+      projectCatalog = payload.projects || [];
+      const existingIds = new Set(projectCatalog.map((item) => item.project_id));
+      selectedProjectIds = new Set([...selectedProjectIds].filter((item) => existingIds.has(item)));
+      renderProjectCatalog();
+    }
+
+    async function recoverProject(projectId) {
+      try {
+        const resp = await fetch(`/api/projects/${projectId}/load`, { method: "POST" });
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || "项目恢复失败");
+        }
+
+        currentProjectId = payload.project.project_id;
+        currentJobId = payload.job.job_id;
+        latestStatus = { ok: true, job: payload.job };
+        latestResults = payload.results;
+        lastRevision = payload.job.revision ?? -1;
+        lastResultsRevision = payload.results?.revision ?? -1;
+        lastLoggedTotalPackets = payload.job.source_packet_count ?? payload.job.target_packet_count ?? null;
+        fileInput.value = "";
+
+        hydrateActiveModulesFromJob(payload.job);
+        applyProjectMeta(payload.project, payload.job);
+        renderActiveModules();
+        renderWorkspace();
+        updateStepByJob(payload.job);
+        syncProjectCatalogFromJob(payload.job);
+        renderProjectCatalog();
+        startPolling();
+        log(`项目已恢复: ${payload.project.filename} (${payload.project.project_id})`);
+      } catch (err) {
+        log(`恢复项目失败: ${err.message || err}`, "ERROR");
+      }
+    }
+
+    async function deleteProject(projectId) {
+      const project = projectCatalog.find((item) => item.project_id === projectId);
+      if (project && !project.can_delete) {
+        log(`项目暂不可删除: ${project.delete_block_reason || "存在未完成任务"}`, "WARN");
+        return;
+      }
+      if (!window.confirm(`确认删除项目 ${projectId} 吗？这会删除持久化的 SQLite 和项目元数据。`)) {
+        return;
+      }
+      try {
+        const resp = await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || "项目删除失败");
+        }
+
+        projectCatalog = projectCatalog.filter((item) => item.project_id !== projectId);
+        selectedProjectIds.delete(projectId);
+        if (currentProjectId === projectId || currentJobId === projectId) {
+          clearCurrentProjectView();
+        }
+        renderProjectCatalog();
+        log(`项目已删除: ${projectId}`);
+      } catch (err) {
+        log(`删除项目失败: ${err.message || err}`, "ERROR");
+      }
+    }
+
     function createModuleCard(type, item) {
       const el = document.createElement("div");
       el.className = "module-item";
@@ -748,22 +1169,86 @@
       for (const module of activeModules) {
         const card = document.createElement("div");
         card.className = "active-module";
+        const rerunDisabledReason = moduleRerunDisabledReason(module);
+        const progressText = module.state === "running" && module.progress ? formatModuleProgress(module.progress) : "";
         card.innerHTML = `
           <div class="row">
             <div class="name">${esc(module.name)}</div>
-            <button class="tiny-btn" type="button" data-id="${esc(moduleId(module))}">移除</button>
+            <div class="actions">
+              <button class="tiny-btn secondary" type="button" data-action="rerun" data-id="${esc(moduleId(module))}" ${rerunDisabledReason ? "disabled" : ""} title="${esc(rerunDisabledReason || "重新执行该模块")}">重跑</button>
+              <button class="tiny-btn" type="button" data-action="remove" data-id="${esc(moduleId(module))}">移除</button>
+            </div>
           </div>
           <div class="meta">type=${esc(module.type)} · state=${esc(module.state || "pending")}</div>
+          ${progressText ? `<div class="meta">progress=${esc(progressText)}</div>` : ""}
         `;
         activeListEl.appendChild(card);
       }
 
-      activeListEl.querySelectorAll("button[data-id]").forEach((btn) => {
+      activeListEl.querySelectorAll("button[data-action='remove']").forEach((btn) => {
         btn.addEventListener("click", () => {
           const id = btn.dataset.id;
           removeActiveModuleById(id);
         });
       });
+      activeListEl.querySelectorAll("button[data-action='rerun']").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.id;
+          await rerunModuleById(id);
+        });
+      });
+    }
+
+    function moduleRerunDisabledReason(module) {
+      if (!currentJobId) return "当前没有可执行的样本项目";
+      if (!latestStatus?.job || latestStatus.job.status !== "parsed") return "基础解析完成后才能重跑模块";
+      if (module.state === "running" || module.state === "pending") return "模块仍在运行中";
+      if (module.state === "waiting_file") return "请先启动基础解析";
+      return "";
+    }
+
+    function clearModuleResultCache(module) {
+      if (!latestResults?.modules) return;
+      latestResults.modules = latestResults.modules.map((item) => {
+        if (item.module_type !== module.type || item.module_name !== module.name) return item;
+        return {
+          module_type: item.module_type,
+          module_name: item.module_name,
+          status: "pending",
+          created_at: item.created_at,
+          started_at: null,
+          finished_at: null,
+          error: null,
+        };
+      });
+    }
+
+    async function rerunModuleById(id) {
+      const target = activeModules.find((item) => moduleId(item) === id);
+      if (!target) return;
+      const disabledReason = moduleRerunDisabledReason(target);
+      if (disabledReason) {
+        log(`模块暂不可重跑: ${target.name} ${disabledReason}`, "WARN");
+        return;
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append("module_type", target.type);
+        formData.append("module_name", target.name);
+        const resp = await fetch(`/api/jobs/${currentJobId}/modules/restart`, { method: "POST", body: formData });
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || "模块重跑失败");
+        }
+        target.state = payload.module.status || "pending";
+        clearModuleResultCache(target);
+        renderActiveModules();
+        renderWorkspace();
+        log(`模块已重新执行: ${target.name}`);
+      } catch (err) {
+        log(`模块重跑失败: ${target.name} ${err.message || err}`, "ERROR");
+      }
     }
 
     async function removeActiveModuleById(id) {
@@ -775,10 +1260,14 @@
           const formData = new FormData();
           formData.append("module_type", target.type);
           formData.append("module_name", target.name);
-          await fetch(`/api/jobs/${currentJobId}/modules/remove`, { method: "POST", body: formData });
+          const resp = await fetch(`/api/jobs/${currentJobId}/modules/remove`, { method: "POST", body: formData });
+          const payload = await resp.json();
+          if (!resp.ok || !payload.ok) {
+            throw new Error(payload?.detail || "模块移除失败");
+          }
           log(`模块已停止: ${target.name}`);
         } catch (err) {
-          log(`停止模块失败: ${target.name}`, "ERROR");
+          log(`停止模块失败: ${target.name} ${err.message || err}`, "ERROR");
         }
       }
 
@@ -892,6 +1381,8 @@
         parseProgressEl.textContent = formatParseProgress(job);
         updateStepByJob(job);
         syncModuleStatesFromStatus(job);
+        syncProjectCatalogFromJob(job);
+        renderProjectCatalog();
 
         if (totalPacketCount != null && totalPacketCount !== lastLoggedTotalPackets) {
           lastLoggedTotalPackets = totalPacketCount;
@@ -979,13 +1470,82 @@
     function syncModuleStatesFromStatus(job) {
       const map = {};
       for (const module of job.modules || []) {
-        map[`${module.module_type}:${module.module_name}`] = module.status;
+        map[`${module.module_type}:${module.module_name}`] = module;
       }
       for (const item of activeModules) {
-        const status = map[moduleId(item)];
-        if (status) item.state = status;
+        const snapshot = map[moduleId(item)];
+        if (snapshot) {
+          item.state = snapshot.status;
+          item.progress = snapshot.progress || null;
+        } else {
+          item.progress = null;
+        }
       }
       renderActiveModules();
+    }
+
+    async function cleanupProjects({ projectIds = null, keepRecent = null, actionLabel = "项目清理" }) {
+      try {
+        const resp = await fetch("/api/projects/cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_ids: projectIds,
+            keep_recent: keepRecent,
+          }),
+        });
+        const payload = await resp.json();
+        if (!resp.ok || !payload.ok) {
+          throw new Error(payload?.detail || `${actionLabel}失败`);
+        }
+
+        const deletedIds = new Set((payload.deleted || []).map((item) => item.project_id));
+        for (const projectId of deletedIds) {
+          selectedProjectIds.delete(projectId);
+        }
+        if (currentProjectId && deletedIds.has(currentProjectId)) {
+          clearCurrentProjectView();
+        }
+
+        await loadProjectCatalog();
+        log(`${actionLabel}完成: deleted=${payload.deleted_count || 0}, skipped=${payload.skipped_count || 0}`);
+        for (const item of payload.skipped || []) {
+          log(`项目跳过: ${item.project_id} ${item.reason}`, "WARN");
+        }
+      } catch (err) {
+        log(`${actionLabel}失败: ${err.message || err}`, "ERROR");
+      }
+    }
+
+    async function deleteSelectedProjects() {
+      const projectIds = [...selectedProjectIds];
+      if (!projectIds.length) {
+        log("请先勾选要删除的项目", "WARN");
+        return;
+      }
+      if (!window.confirm(`确认批量删除 ${projectIds.length} 个项目吗？不可删除的项目会自动跳过。`)) {
+        return;
+      }
+      await cleanupProjects({ projectIds, actionLabel: "批量删除项目" });
+    }
+
+    async function clearDeletableProjects() {
+      if (!window.confirm("确认清空所有当前可删除的项目吗？运行中或解析中的项目会被跳过。")) {
+        return;
+      }
+      await cleanupProjects({ keepRecent: 0, actionLabel: "清空可删项目" });
+    }
+
+    async function pruneProjects() {
+      const keepRecent = Number(projectKeepCountInput.value || "0");
+      if (!Number.isInteger(keepRecent) || keepRecent < 0) {
+        log("保留数量必须是大于等于 0 的整数", "WARN");
+        return;
+      }
+      if (!window.confirm(`确认只保留最近 ${keepRecent} 个项目吗？其余可删除项目会被清理。`)) {
+        return;
+      }
+      await cleanupProjects({ keepRecent, actionLabel: `保留最近 ${keepRecent} 个项目` });
     }
 
     async function startBaseJob() {
@@ -1000,6 +1560,7 @@
       latestResults = null;
       lastRevision = -1;
       lastResultsRevision = -1;
+      currentProjectId = null;
       currentJobId = null;
       lastLoggedTotalPackets = null;
       document.getElementById("meta-total-packet-count").textContent = "-";
@@ -1024,10 +1585,12 @@
           throw new Error(payload?.detail || "任务创建失败");
         }
 
+        currentProjectId = payload.project_id || payload.job_id;
         currentJobId = payload.job_id;
         setStep("upload", "done");
         setStatus("基础解析中", "run");
         log(`任务创建成功: job_id=${currentJobId}`);
+        await loadProjectCatalog();
 
         for (const module of activeModules) {
           await startModuleOnServer(module);
@@ -1184,7 +1747,10 @@
         if (!pane) continue;
         const resultItem = getModuleResult(module);
         if (!resultItem || !resultItem.result) {
-          pane.innerHTML = `<div class="muted">模块状态: ${esc(module.state || "pending")}，等待结果...</div>`;
+          const progressText = module.state === "running" && module.progress
+            ? ` · 进度: ${esc(formatModuleProgress(module.progress))}`
+            : "";
+          pane.innerHTML = `<div class="muted">模块状态: ${esc(module.state || "pending")}，等待结果...${progressText}</div>`;
           continue;
         }
         if (module.type === "protocol") {
@@ -1308,6 +1874,19 @@
     clearLogBtn.addEventListener("click", () => {
       consoleBox.textContent = "[INFO] 日志已清空";
     });
+    projectRefreshBtn.addEventListener("click", async () => {
+      await loadProjectCatalog();
+      log("项目列表已刷新");
+    });
+    projectDeleteSelectedBtn.addEventListener("click", async () => {
+      await deleteSelectedProjects();
+    });
+    projectClearDeletableBtn.addEventListener("click", async () => {
+      await clearDeletableProjects();
+    });
+    projectPruneBtn.addEventListener("click", async () => {
+      await pruneProjects();
+    });
 
     document.getElementById("run-form").addEventListener("submit", (e) => e.preventDefault());
 
@@ -1317,7 +1896,7 @@
     applyTopLayout();
     renderActiveModules();
     renderWorkspace();
-    loadModuleCatalog().catch((err) => {
+    Promise.all([loadModuleCatalog(), loadProjectCatalog()]).catch((err) => {
       setStatus("初始化失败", "err");
       log(`初始化失败: ${err.message || err}`, "ERROR");
     });

@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import json
 from multiprocessing import Process
 import os
+from pathlib import Path
+import shutil
 import sqlite3
 import tempfile
 from threading import RLock, Thread
@@ -16,11 +18,13 @@ import traceback
 from typing import Callable, Dict, Iterator, Optional
 from uuid import uuid4
 
-from TrafficAnalyzer.config import LARGE_PCAP_THRESHOLD
+from TrafficAnalyzer.config import LARGE_PCAP_THRESHOLD, PARALLEL_PARSE_MAX_WORKERS
 from TrafficAnalyzer.core.loader import PcapLoader
 from TrafficAnalyzer.core.models import PacketRecord
 from TrafficAnalyzer.parsers.packet_parser import PacketParser
 from TrafficAnalyzer.pipeline import build_default_pipeline_service
+
+PROJECT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "data" / "projects"
 
 
 def _now_iso() -> str:
@@ -80,34 +84,142 @@ def _write_json_atomic(path: str, payload: dict) -> None:
     os.replace(tmp_path, path)
 
 
+def _read_json_file(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as fp:
+        return json.load(fp)
+
+
+def _packet_record_to_dict(record: PacketRecord) -> dict:
+    return dict(record.__dict__)
+
+
+def _packet_record_to_json(record: PacketRecord) -> str:
+    return json.dumps(_packet_record_to_dict(record), ensure_ascii=False, separators=(",", ":"))
+
+
+def _module_progress_payload(processed: int, total: int | None) -> dict:
+    percent = None
+    if total and total > 0:
+        percent = round((processed / total) * 100, 2)
+    return {
+        "processed": processed,
+        "total": total,
+        "percent": percent,
+        "updated_at": _now_iso(),
+    }
+
+
+def _write_module_progress(path: str, *, processed: int, total: int | None) -> None:
+    _write_json_atomic(path, _module_progress_payload(processed=processed, total=total))
+
+
+def _read_module_progress(path: str | None) -> dict | None:
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        payload = _read_json_file(path)
+    except Exception:
+        return None
+    processed = int(payload.get("processed", 0) or 0)
+    total_raw = payload.get("total")
+    total = int(total_raw) if isinstance(total_raw, (int, float)) else None
+    percent_raw = payload.get("percent")
+    percent = float(percent_raw) if isinstance(percent_raw, (int, float)) else None
+    updated_at = payload.get("updated_at")
+    return {
+        "processed": processed,
+        "total": total,
+        "percent": percent,
+        "updated_at": updated_at,
+    }
+
+
+def _progress_packet_stream(
+    packets: Iterator[PacketRecord],
+    *,
+    total_packets: int | None,
+    progress_callback: Callable[[int], None] | None,
+    progress_interval: int = 1000,
+) -> Iterator[PacketRecord]:
+    if progress_callback is None:
+        yield from packets
+        return
+
+    processed = 0
+    last_reported = 0
+    last_report_at = time.monotonic()
+    for packet in packets:
+        processed += 1
+        now = time.monotonic()
+        should_report = (
+            (processed - last_reported) >= progress_interval
+            or (total_packets is not None and processed >= total_packets)
+            or (now - last_report_at) >= 1.0
+        )
+        if should_report:
+            progress_callback(processed)
+            last_reported = processed
+            last_report_at = now
+        yield packet
+
+    if processed != last_reported:
+        progress_callback(processed)
+
+
 def _parse_packet_chunk(
     pcap_path: str,
     progress_callback: Callable[[int], None] | None = None,
     progress_interval: int = 1000,
+    output_path: str | None = None,
 ) -> dict:
     parser = PacketParser()
     records: list[dict] = []
+    packet_count = 0
     pending_progress = 0
     last_progress_at = time.monotonic()
+    writer = None
 
-    for record in parser.parse_file(pcap_path):
-        records.append(asdict(record))
-        pending_progress += 1
+    try:
+        if output_path:
+            writer = open(output_path, "w", encoding="utf-8")
 
-        should_report = pending_progress >= progress_interval or (time.monotonic() - last_progress_at) >= 1.0
-        if progress_callback and should_report:
-            progress_callback(pending_progress)
-            pending_progress = 0
-            last_progress_at = time.monotonic()
+        for record in parser.parse_file(pcap_path):
+            packet_count += 1
+            if writer is not None:
+                writer.write(_packet_record_to_json(record))
+                writer.write("\n")
+            else:
+                records.append(_packet_record_to_dict(record))
+            pending_progress += 1
+
+            should_report = pending_progress >= progress_interval or (time.monotonic() - last_progress_at) >= 1.0
+            if progress_callback and should_report:
+                progress_callback(pending_progress)
+                pending_progress = 0
+                last_progress_at = time.monotonic()
+    except Exception:
+        if output_path:
+            try:
+                os.remove(output_path)
+            except OSError:
+                pass
+        raise
+    finally:
+        if writer is not None:
+            writer.close()
 
     if progress_callback and pending_progress:
         progress_callback(pending_progress)
 
-    return {
+    result = {
         "pcap_path": pcap_path,
-        "packet_count": len(records),
-        "records": records,
+        "packet_count": packet_count,
     }
+    if output_path:
+        result["output_path"] = output_path
+    else:
+        result["records"] = records
+    return result
 
 
 def _analyze_chunk_map(task: tuple[str, str, str, list[str]]) -> dict:
@@ -219,6 +331,7 @@ def _run_mapreduce_worker(
     module_name: str,
     source: str,
     fetch_size: int,
+    progress_callback: Callable[[int], None] | None = None,
 ) -> dict:
     worker_count = max(1, min((os.cpu_count() or 2), 4))
     summary = {"packet_count": 0, "protocol_event_count": 0, "alert_count": 0}
@@ -245,6 +358,8 @@ def _run_mapreduce_worker(
                 summary["packet_count"] += int(part_summary.get("packet_count", 0))
                 summary["protocol_event_count"] += int(part_summary.get("protocol_event_count", 0))
                 summary["alert_count"] += int(part_summary.get("alert_count", 0))
+                if progress_callback is not None:
+                    progress_callback(summary["packet_count"])
                 _merge_protocol_detail(detail, top_counters, partial.get("detail", {}))
                 _merge_debug(debug_acc, partial.get("debug", {}))
 
@@ -266,6 +381,8 @@ def _run_mapreduce_worker(
             summary["packet_count"] += int(part_summary.get("packet_count", 0))
             summary["protocol_event_count"] += int(part_summary.get("protocol_event_count", 0))
             summary["alert_count"] += int(part_summary.get("alert_count", 0))
+            if progress_callback is not None:
+                progress_callback(summary["packet_count"])
             alerts.extend(partial.get("alerts", []))
             _merge_debug(debug_acc, partial.get("debug", {}))
 
@@ -285,8 +402,17 @@ def _module_worker(
     source: str,
     result_path: str,
     fetch_size: int,
+    progress_path: str | None = None,
+    total_packets: int | None = None,
 ) -> None:
     try:
+        progress_callback = None
+        if progress_path:
+            _write_module_progress(progress_path, processed=0, total=total_packets)
+
+            def progress_callback(processed: int) -> None:
+                _write_module_progress(progress_path, processed=processed, total=total_packets)
+
         map_reducible_attacks = {"SQLInjectionDetector", "BehinderDetector"}
         enable_mapreduce = module_type == "protocol" or (
             module_type == "attack" and module_name in map_reducible_attacks
@@ -299,12 +425,17 @@ def _module_worker(
                 module_name=module_name,
                 source=source,
                 fetch_size=fetch_size,
+                progress_callback=progress_callback,
             )
             _write_json_atomic(result_path, {"ok": True, "result": result})
             return
 
         service = build_default_pipeline_service()
-        packet_stream = _stream_packets_from_db(db_path=db_path, fetch_size=fetch_size)
+        packet_stream = _progress_packet_stream(
+            _stream_packets_from_db(db_path=db_path, fetch_size=fetch_size),
+            total_packets=total_packets,
+            progress_callback=progress_callback,
+        )
 
         if module_type == "protocol":
             report = service.analyze_packets(
@@ -369,6 +500,7 @@ class ModuleExecution:
     process: Optional[Process] = field(default=None, repr=False)
     watcher: Optional[Thread] = field(default=None, repr=False)
     result_path: Optional[str] = field(default=None, repr=False)
+    progress_path: Optional[str] = field(default=None, repr=False)
 
     @property
     def key(self) -> str:
@@ -382,6 +514,10 @@ class AnalysisJob:
     temp_path: str
     db_path: str
     max_packets: Optional[int]
+    project_id: str = ""
+    project_dir: str = ""
+    metadata_path: str = ""
+    source_size_bytes: Optional[int] = None
     managed_temp: bool = True
     status: str = "queued"  # queued | parsing | parsed | error
     created_at: str = field(default_factory=_now_iso)
@@ -399,6 +535,10 @@ class AnalysisJob:
     parse_thread: Optional[Thread] = field(default=None, repr=False)
     lock: RLock = field(default_factory=RLock, repr=False)
 
+    def __post_init__(self) -> None:
+        if not self.project_id:
+            self.project_id = self.job_id
+
     def bump_revision(self) -> None:
         self.revision += 1
 
@@ -409,7 +549,9 @@ class JobManager:
         db_flush_size: int = 500,
         module_db_fetch_size: int = 2000,
         parallel_parse_threshold_bytes: int = LARGE_PCAP_THRESHOLD,
+        parallel_parse_max_workers: int = PARALLEL_PARSE_MAX_WORKERS,
         split_target_mb: float = 64.0,
+        storage_root: str | None = None,
     ):
         self.jobs: Dict[str, AnalysisJob] = {}
         self.lock = RLock()
@@ -420,32 +562,339 @@ class JobManager:
         self.db_flush_size = db_flush_size
         self.module_db_fetch_size = module_db_fetch_size
         self.parallel_parse_threshold_bytes = parallel_parse_threshold_bytes
+        self.parallel_parse_max_workers = max(1, int(parallel_parse_max_workers))
         self.split_target_mb = split_target_mb
+        self.storage_root = Path(storage_root) if storage_root else PROJECT_STORAGE_ROOT
         self._shutdown_done = False
+        self._load_persisted_jobs()
         atexit.register(self.shutdown)
 
     def list_modules(self) -> dict:
         return self.module_catalog
+
+    def list_projects(self) -> list[dict]:
+        with self.lock:
+            projects = list(self.jobs.values())
+
+        items = [self._project_snapshot(job) for job in projects]
+        items.sort(key=lambda item: item.get("updated_at") or item.get("created_at") or "", reverse=True)
+        return items
+
+    def load_project(self, project_id: str) -> dict:
+        job = self._get_job(project_id)
+        return {
+            "ok": True,
+            "project": self._project_snapshot(job),
+            "job": self.job_status(job.job_id)["job"],
+            "results": self.job_results(job.job_id),
+        }
+
+    def delete_project(self, project_id: str) -> dict:
+        job = self._get_job(project_id)
+
+        with job.lock:
+            pending_modules = sum(1 for module in job.modules.values() if module.status == "pending")
+            running_modules = sum(1 for module in job.modules.values() if module.status == "running")
+            delete_block_reason = self._project_delete_block_reason(
+                status=job.status,
+                pending_module_count=pending_modules,
+                running_module_count=running_modules,
+            )
+            if delete_block_reason:
+                raise HTTPError(f"项目当前不可删除: {delete_block_reason}")
+            project_dir = job.project_dir
+
+        with self.lock:
+            self.jobs.pop(job.job_id, None)
+
+        if project_dir:
+            shutil.rmtree(project_dir, ignore_errors=True)
+        return {"deleted": True, "project_id": job.project_id, "job_id": job.job_id}
+
+    def cleanup_projects(
+        self,
+        *,
+        project_ids: list[str] | None = None,
+        keep_recent: int | None = None,
+    ) -> dict:
+        if keep_recent is not None:
+            try:
+                keep_recent = int(keep_recent)
+            except (TypeError, ValueError) as exc:
+                raise HTTPError("keep_recent 必须是整数") from exc
+        normalized_ids: list[str] = []
+        if project_ids:
+            seen: set[str] = set()
+            for item in project_ids:
+                project_id = str(item or "").strip()
+                if not project_id or project_id in seen:
+                    continue
+                seen.add(project_id)
+                normalized_ids.append(project_id)
+
+        if keep_recent is not None and keep_recent < 0:
+            raise HTTPError("keep_recent 不能小于 0")
+        if not normalized_ids and keep_recent is None:
+            raise HTTPError("缺少清理目标")
+
+        if normalized_ids:
+            target_ids = normalized_ids
+        else:
+            projects = self.list_projects()
+            target_ids = [item["project_id"] for item in projects[keep_recent:]]
+
+        deleted: list[dict] = []
+        skipped: list[dict] = []
+        for project_id in target_ids:
+            try:
+                deleted.append(self.delete_project(project_id))
+            except HTTPError as exc:
+                skipped.append({"project_id": project_id, "reason": str(exc)})
+
+        return {
+            "requested_count": len(target_ids),
+            "deleted_count": len(deleted),
+            "skipped_count": len(skipped),
+            "deleted": deleted,
+            "skipped": skipped,
+            "keep_recent": keep_recent,
+        }
+
+    def _load_persisted_jobs(self) -> None:
+        if not self.storage_root.exists():
+            return
+
+        for meta_path in sorted(self.storage_root.glob("*/meta.json")):
+            try:
+                payload = _read_json_file(str(meta_path))
+                job = self._job_from_meta(payload, meta_path=meta_path)
+            except Exception:
+                continue
+            self.jobs[job.job_id] = job
+
+    def _job_from_meta(self, payload: dict, meta_path: Path) -> AnalysisJob:
+        project_dir = meta_path.parent
+        db_path = project_dir / "packets.sqlite3"
+        if not db_path.exists():
+            raise FileNotFoundError(f"项目数据库不存在: {db_path}")
+
+        raw_status = str(payload.get("status") or "error")
+        status = raw_status if raw_status in {"queued", "parsing", "parsed", "error"} else "error"
+        parse_error = payload.get("parse_error")
+        if status in {"queued", "parsing"}:
+            status = "error"
+            parse_error = parse_error or "服务重启前任务未完成，已标记为异常恢复。"
+
+        job = AnalysisJob(
+            job_id=str(payload.get("job_id") or payload.get("project_id") or project_dir.name),
+            project_id=str(payload.get("project_id") or payload.get("job_id") or project_dir.name),
+            filename=str(payload.get("filename") or project_dir.name),
+            temp_path="",
+            db_path=str(db_path),
+            max_packets=payload.get("max_packets"),
+            project_dir=str(project_dir),
+            metadata_path=str(meta_path),
+            source_size_bytes=payload.get("source_size_bytes"),
+            managed_temp=False,
+            status=status,
+            created_at=payload.get("created_at") or _now_iso(),
+            started_at=payload.get("started_at"),
+            finished_at=payload.get("finished_at"),
+            packet_count=int(payload.get("packet_count", 0) or 0),
+            source_packet_count=payload.get("source_packet_count"),
+            source_packet_count_estimated=bool(payload.get("source_packet_count_estimated", False)),
+            target_packet_count=payload.get("target_packet_count"),
+            progress_updated_at=payload.get("progress_updated_at"),
+            parse_error=parse_error,
+            parse_mode=str(payload.get("parse_mode") or "sequential"),
+        )
+
+        modules_payload = payload.get("modules") or {}
+        for key, item in modules_payload.items():
+            module = ModuleExecution(
+                module_type=str(item.get("module_type") or "protocol"),
+                module_name=str(item.get("module_name") or key),
+                status=str(item.get("status") or "pending"),
+                created_at=item.get("created_at") or _now_iso(),
+                started_at=item.get("started_at"),
+                finished_at=item.get("finished_at"),
+                error=item.get("error"),
+            )
+            if module.status in {"running", "pending"}:
+                module.status = "stopped"
+
+            result_file = item.get("result_file")
+            if result_file:
+                result_path = project_dir / result_file
+                if result_path.exists():
+                    try:
+                        module.result = _read_json_file(str(result_path))
+                    except Exception:
+                        module.result = None
+            job.modules[module.key] = module
+
+        return job
+
+    def _project_snapshot(self, job: AnalysisJob) -> dict:
+        with job.lock:
+            modules = list(job.modules.values())
+            running_module_count = sum(1 for module in modules if module.status == "running")
+            pending_module_count = sum(1 for module in modules if module.status == "pending")
+            completed_module_count = sum(1 for module in modules if module.status == "completed")
+            error_module_count = sum(1 for module in modules if module.status == "error")
+            stopped_module_count = sum(1 for module in modules if module.status == "stopped")
+            delete_block_reason = self._project_delete_block_reason(
+                status=job.status,
+                pending_module_count=pending_module_count,
+                running_module_count=running_module_count,
+            )
+            latest_completed_modules = [
+                {
+                    "type": module.module_type,
+                    "name": module.module_name,
+                    "finished_at": module.finished_at,
+                }
+                for module in sorted(
+                    [item for item in modules if item.status == "completed"],
+                    key=lambda item: item.finished_at or item.started_at or item.created_at or "",
+                    reverse=True,
+                )[:3]
+            ]
+            recent_errors: list[dict] = []
+            if job.parse_error:
+                recent_errors.append(
+                    {
+                        "scope": "parse",
+                        "name": "base_parse",
+                        "message": job.parse_error,
+                        "at": job.finished_at or job.progress_updated_at,
+                    }
+                )
+            recent_errors.extend(
+                {
+                    "scope": "module",
+                    "name": module.module_name,
+                    "message": module.error,
+                    "at": module.finished_at or module.started_at or module.created_at,
+                }
+                for module in sorted(
+                    [item for item in modules if item.error],
+                    key=lambda item: item.finished_at or item.started_at or item.created_at or "",
+                    reverse=True,
+                )[:3]
+            )
+            return {
+                "project_id": job.project_id,
+                "job_id": job.job_id,
+                "filename": job.filename,
+                "status": job.status,
+                "created_at": job.created_at,
+                "started_at": job.started_at,
+                "finished_at": job.finished_at,
+                "updated_at": job.progress_updated_at or job.finished_at or job.created_at,
+                "packet_count": job.packet_count,
+                "source_packet_count": job.source_packet_count,
+                "target_packet_count": job.target_packet_count,
+                "source_size_bytes": job.source_size_bytes,
+                "parse_mode": job.parse_mode,
+                "parse_error": job.parse_error,
+                "module_count": len(modules),
+                "active_module_count": len(modules) - stopped_module_count,
+                "running_module_count": running_module_count,
+                "pending_module_count": pending_module_count,
+                "completed_module_count": completed_module_count,
+                "error_module_count": error_module_count,
+                "stopped_module_count": stopped_module_count,
+                "latest_completed_modules": latest_completed_modules,
+                "recent_errors": recent_errors[:3],
+                "can_delete": delete_block_reason is None,
+                "delete_block_reason": delete_block_reason,
+            }
+
+    def _module_result_filename(self, module: ModuleExecution) -> str:
+        safe_name = module.module_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+        return f"{module.module_type}__{safe_name}.json"
+
+    def _persist_job(self, job: AnalysisJob) -> None:
+        project_dir = Path(job.project_dir) if job.project_dir else None
+        metadata_path = Path(job.metadata_path) if job.metadata_path else None
+        if not project_dir or not metadata_path:
+            return
+
+        project_dir.mkdir(parents=True, exist_ok=True)
+        module_dir = project_dir / "module_results"
+        module_dir.mkdir(parents=True, exist_ok=True)
+
+        stale_files = {path.name for path in module_dir.glob("*.json")}
+        modules_payload: dict[str, dict] = {}
+
+        with job.lock:
+            for key, module in job.modules.items():
+                result_file = None
+                if module.result is not None:
+                    result_file = self._module_result_filename(module)
+                    _write_json_atomic(str(module_dir / result_file), module.result)
+                    stale_files.discard(result_file)
+
+                modules_payload[key] = {
+                    "module_type": module.module_type,
+                    "module_name": module.module_name,
+                    "status": module.status,
+                    "created_at": module.created_at,
+                    "started_at": module.started_at,
+                    "finished_at": module.finished_at,
+                    "error": module.error,
+                    "result_file": f"module_results/{result_file}" if result_file else None,
+                }
+
+            payload = {
+                "project_id": job.project_id,
+                "job_id": job.job_id,
+                "filename": job.filename,
+                "status": job.status,
+                "created_at": job.created_at,
+                "started_at": job.started_at,
+                "finished_at": job.finished_at,
+                "progress_updated_at": job.progress_updated_at,
+                "packet_count": job.packet_count,
+                "source_packet_count": job.source_packet_count,
+                "source_packet_count_estimated": job.source_packet_count_estimated,
+                "target_packet_count": job.target_packet_count,
+                "source_size_bytes": job.source_size_bytes,
+                "max_packets": job.max_packets,
+                "parse_error": job.parse_error,
+                "parse_mode": job.parse_mode,
+                "modules": modules_payload,
+            }
+
+        for filename in stale_files:
+            self._safe_remove_file(str(module_dir / filename))
+        _write_json_atomic(str(metadata_path), payload)
 
     def create_job(
         self,
         filename: str,
         temp_path: str,
         max_packets: Optional[int],
+        source_size_bytes: Optional[int] = None,
         managed_temp: bool = True,
     ) -> str:
         job_id = uuid4().hex
-        db_file = tempfile.NamedTemporaryFile(prefix=f"traffic_{job_id[:8]}_", suffix=".sqlite3", delete=False)
-        db_path = db_file.name
-        db_file.close()
+        project_dir = self.storage_root / job_id
+        project_dir.mkdir(parents=True, exist_ok=True)
+        db_path = str(project_dir / "packets.sqlite3")
         _init_packet_db(db_path)
 
         job = AnalysisJob(
             job_id=job_id,
+            project_id=job_id,
             filename=filename,
             temp_path=temp_path,
             db_path=db_path,
             max_packets=max_packets,
+            project_dir=str(project_dir),
+            metadata_path=str(project_dir / "meta.json"),
+            source_size_bytes=source_size_bytes,
             managed_temp=managed_temp,
         )
         parse_thread = Thread(target=self._run_base_parse, args=(job_id,), daemon=True, name=f"parse-{job_id[:6]}")
@@ -454,6 +903,7 @@ class JobManager:
         with self.lock:
             self.jobs[job_id] = job
 
+        self._persist_job(job)
         parse_thread.start()
         return job_id
 
@@ -474,6 +924,37 @@ class JobManager:
 
         if should_start:
             self._submit_module(job_id, key)
+        else:
+            self._persist_job(job)
+        return self._module_snapshot(module)
+
+    def restart_module(self, job_id: str, module_type: str, module_name: str) -> dict:
+        job = self._get_job(job_id)
+        self._validate_module(module_type, module_name)
+        key = f"{module_type}:{module_name}"
+
+        with job.lock:
+            if job.status != "parsed":
+                raise HTTPError("基础解析尚未完成，无法重新执行模块")
+            module = job.modules.get(key)
+            if not module:
+                raise HTTPError(f"模块不存在: {key}")
+            if module.status in {"pending", "running"}:
+                raise HTTPError(f"模块仍在运行中，无法重新执行: {key}")
+
+            module.stop_requested = False
+            module.status = "pending"
+            module.started_at = None
+            module.finished_at = None
+            module.error = None
+            module.result = None
+            module.process = None
+            module.watcher = None
+            module.result_path = None
+            module.progress_path = None
+            job.bump_revision()
+
+        self._submit_module(job.job_id, key)
         return self._module_snapshot(module)
 
     def remove_module(self, job_id: str, module_type: str, module_name: str) -> dict:
@@ -482,6 +963,7 @@ class JobManager:
 
         process: Optional[Process] = None
         result_path: Optional[str] = None
+        progress_path: Optional[str] = None
         with job.lock:
             module = job.modules.get(key)
             if not module:
@@ -493,10 +975,14 @@ class JobManager:
             module.result = None
             process = module.process
             result_path = module.result_path
+            progress_path = module.progress_path
+            module.progress_path = None
             job.bump_revision()
 
         self._terminate_process(process)
         self._safe_remove_file(result_path)
+        self._safe_remove_file(progress_path)
+        self._persist_job(job)
         return {"removed": True, "module": self._module_snapshot(module)}
 
     def job_status(self, job_id: str) -> dict:
@@ -504,11 +990,18 @@ class JobManager:
         with job.lock:
             modules = [self._module_snapshot(m) for m in job.modules.values()]
             running_modules = sum(1 for m in modules if m["status"] == "running")
+            pending_modules = sum(1 for m in modules if m["status"] == "pending")
             completed_modules = sum(1 for m in modules if m["status"] == "completed")
+            error_modules = sum(1 for m in modules if m["status"] == "error")
             active_modules = sum(1 for m in modules if m["status"] != "stopped")
             protocol_events = 0
             alerts = 0
             progress_percent = None
+            delete_block_reason = self._project_delete_block_reason(
+                status=job.status,
+                pending_module_count=pending_modules,
+                running_module_count=running_modules,
+            )
             if job.target_packet_count:
                 progress_percent = round((job.packet_count / job.target_packet_count) * 100, 2)
             for module in job.modules.values():
@@ -522,6 +1015,7 @@ class JobManager:
                 "ok": True,
                 "job": {
                     "job_id": job.job_id,
+                    "project_id": job.project_id,
                     "filename": job.filename,
                     "status": job.status,
                     "created_at": job.created_at,
@@ -532,10 +1026,13 @@ class JobManager:
                     "source_packet_count_estimated": job.source_packet_count_estimated,
                     "target_packet_count": job.target_packet_count,
                     "progress_updated_at": job.progress_updated_at,
+                    "source_size_bytes": job.source_size_bytes,
                     "max_packets": job.max_packets,
                     "parse_error": job.parse_error,
                     "parse_mode": job.parse_mode,
                     "revision": job.revision,
+                    "can_delete": delete_block_reason is None,
+                    "delete_block_reason": delete_block_reason,
                     "progress": {
                         "parsed": job.packet_count,
                         "total": job.target_packet_count,
@@ -548,7 +1045,9 @@ class JobManager:
                         "progress_percent": progress_percent,
                         "active_modules": active_modules,
                         "running_modules": running_modules,
+                        "pending_modules": pending_modules,
                         "completed_modules": completed_modules,
+                        "error_modules": error_modules,
                         "protocol_event_count": protocol_events,
                         "alert_count": alerts,
                     },
@@ -591,13 +1090,33 @@ class JobManager:
             for module in modules:
                 self._terminate_process(module.process)
                 self._safe_remove_file(module.result_path)
+                self._safe_remove_file(module.progress_path)
+
+            with job.lock:
+                if job.status == "parsing":
+                    job.status = "error"
+                    job.parse_error = job.parse_error or "服务关闭前基础解析未完成。"
+                    job.finished_at = _now_iso()
+                    job.progress_updated_at = job.finished_at
+                for module in job.modules.values():
+                    if module.status == "running":
+                        module.status = "stopped"
+                        module.finished_at = _now_iso()
+                        module.error = None
+                        module.result = None
+                    module.process = None
+                    module.watcher = None
+                    module.result_path = None
+                    module.progress_path = None
+            self._persist_job(job)
 
             if parse_thread and parse_thread.is_alive():
                 parse_thread.join(timeout=1.0)
 
             if managed_temp:
                 self._safe_remove_file(temp_path)
-            self._safe_remove_file(db_path)
+            if not job.project_dir:
+                self._safe_remove_file(db_path)
 
     def _run_base_parse(self, job_id: str) -> None:
         job = self._get_job(job_id)
@@ -637,6 +1156,7 @@ class JobManager:
                 job.finished_at = _now_iso()
                 job.progress_updated_at = job.finished_at
                 job.bump_revision()
+            self._persist_job(job)
             return
         finally:
             conn.close()
@@ -650,6 +1170,7 @@ class JobManager:
             if job.managed_temp:
                 self._safe_remove_file(job.temp_path)
 
+        self._persist_job(job)
         self._start_pending_modules(job_id)
 
     def _initialize_packet_progress(self, job: AnalysisJob) -> None:
@@ -738,7 +1259,7 @@ class JobManager:
                 if job.max_packets is not None and parsed_count >= job.max_packets:
                     break
 
-            batch.append((packet.index, json.dumps(asdict(packet), ensure_ascii=False)))
+            batch.append((packet.index, _packet_record_to_json(packet)))
             parsed_count += 1
 
             if len(batch) >= self.db_flush_size:
@@ -751,6 +1272,26 @@ class JobManager:
 
         self._flush_packet_batch(conn, batch)
         return parsed_count
+
+    def _merge_chunk_output(
+        self,
+        *,
+        conn: sqlite3.Connection,
+        batch: list[tuple[int, str]],
+        output_path: str,
+        start_index: int,
+    ) -> int:
+        next_index = start_index
+        with open(output_path, "r", encoding="utf-8") as fp:
+            for line in fp:
+                packet_json = line.rstrip("\n")
+                if not packet_json:
+                    continue
+                batch.append((next_index, packet_json))
+                next_index += 1
+                if len(batch) >= self.db_flush_size:
+                    self._flush_packet_batch(conn, batch)
+        return next_index
 
     def _run_parallel_base_parse(
         self,
@@ -768,9 +1309,13 @@ class JobManager:
                 job.parse_mode = "sequential"
             return self._run_sequential_base_parse(job=job, conn=conn, batch=batch), [], None
 
-        worker_count = min(len(split_files), max(2, os.cpu_count() or 2))
+        worker_count = min(len(split_files), self.parallel_parse_max_workers, max(2, os.cpu_count() or 2))
         parsed_count = 0
         split_dir = os.path.dirname(split_files[0]) if split_files else None
+        chunk_output_paths = [
+            os.path.join(split_dir or tempfile.gettempdir(), f".parsed_chunk_{chunk_index:05d}.jsonl")
+            for chunk_index, _ in enumerate(split_files)
+        ]
         with job.lock:
             job.parse_mode = "parallel"
             job.packet_count = 0
@@ -781,27 +1326,39 @@ class JobManager:
                     _parse_packet_chunk,
                     split_file,
                     progress_callback=lambda delta, target_job=job: self._increment_parse_progress(target_job, delta),
+                    output_path=output_path,
                 )
-                for split_file in split_files
+                : chunk_index
+                for chunk_index, (split_file, output_path) in enumerate(zip(split_files, chunk_output_paths))
             }
+            completed_results: dict[int, dict] = {}
+            next_chunk_index = 0
             while pending:
-                done, pending = wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
+                done, _ = wait(tuple(pending), timeout=1.0, return_when=FIRST_COMPLETED)
                 if not done:
                     self._touch_parse_progress(job)
                     continue
 
                 for future in done:
-                    result = future.result()
-                    records = result.get("records", [])
-                    for record in records:
-                        record["index"] = parsed_count
-                        batch.append((parsed_count, json.dumps(record, ensure_ascii=False)))
-                        parsed_count += 1
+                    chunk_index = pending.pop(future)
+                    completed_results[chunk_index] = future.result()
 
-                        if len(batch) >= self.db_flush_size:
-                            self._flush_packet_batch(conn, batch)
+                while next_chunk_index in completed_results:
+                    result = completed_results.pop(next_chunk_index)
+                    output_path = str(result.get("output_path") or "")
+                    if output_path:
+                        parsed_count = self._merge_chunk_output(
+                            conn=conn,
+                            batch=batch,
+                            output_path=output_path,
+                            start_index=parsed_count,
+                        )
+                        self._safe_remove_file(output_path)
+                    next_chunk_index += 1
 
         self._flush_packet_batch(conn, batch)
+        for output_path in chunk_output_paths:
+            self._safe_remove_file(output_path)
         return parsed_count, split_files, split_dir
 
     def _flush_packet_batch(self, conn: sqlite3.Connection, batch: list[tuple[int, str]]) -> None:
@@ -842,6 +1399,9 @@ class JobManager:
             fd, result_path = tempfile.mkstemp(prefix=f"module_{job.job_id[:8]}_", suffix=".json")
             os.close(fd)
             module.result_path = result_path
+            fd, progress_path = tempfile.mkstemp(prefix=f"module_{job.job_id[:8]}_", suffix=".progress.json")
+            os.close(fd)
+            module.progress_path = progress_path
 
             process = Process(
                 target=_module_worker,
@@ -852,6 +1412,8 @@ class JobManager:
                     "source": job.filename,
                     "result_path": result_path,
                     "fetch_size": self.module_db_fetch_size,
+                    "progress_path": progress_path,
+                    "total_packets": job.packet_count,
                 },
                 daemon=True,
                 name=f"mod-{job.job_id[:6]}-{module.module_name}",
@@ -871,6 +1433,7 @@ class JobManager:
             module = job.modules.get(module_key)
             if module and module.run_id == run_id:
                 module.watcher = watcher
+        self._persist_job(job)
         watcher.start()
 
     def _watch_module_process(self, job_id: str, module_key: str, run_id: int) -> None:
@@ -881,6 +1444,7 @@ class JobManager:
                 return
             process = module.process
             result_path = module.result_path
+            progress_path = module.progress_path
 
         if process:
             process.join()
@@ -897,6 +1461,7 @@ class JobManager:
             module = job.modules.get(module_key)
             if not module or module.run_id != run_id:
                 self._safe_remove_file(result_path)
+                self._safe_remove_file(progress_path)
                 return
 
             module.process = None
@@ -924,9 +1489,12 @@ class JobManager:
                 module.result = None
 
             module.result_path = None
+            module.progress_path = None
             job.bump_revision()
 
+        self._persist_job(job)
         self._safe_remove_file(result_path)
+        self._safe_remove_file(progress_path)
 
     def _validate_module(self, module_type: str, module_name: str) -> None:
         if module_type == "protocol":
@@ -942,11 +1510,19 @@ class JobManager:
     def _get_job(self, job_id: str) -> AnalysisJob:
         with self.lock:
             job = self.jobs.get(job_id)
+            if job is None:
+                for item in self.jobs.values():
+                    if item.project_id == job_id:
+                        job = item
+                        break
         if not job:
             raise HTTPError(f"任务不存在: {job_id}")
         return job
 
     def _module_snapshot(self, module: ModuleExecution) -> dict:
+        progress = None
+        if module.status == "running":
+            progress = _read_module_progress(module.progress_path)
         return {
             "module_type": module.module_type,
             "module_name": module.module_name,
@@ -955,7 +1531,23 @@ class JobManager:
             "started_at": module.started_at,
             "finished_at": module.finished_at,
             "error": module.error,
+            "progress": progress,
         }
+
+    def _project_delete_block_reason(
+        self,
+        *,
+        status: str,
+        pending_module_count: int,
+        running_module_count: int,
+    ) -> Optional[str]:
+        if status in {"queued", "parsing"}:
+            return "基础解析尚未完成"
+        if running_module_count > 0:
+            return f"仍有 {running_module_count} 个模块运行中"
+        if pending_module_count > 0:
+            return f"仍有 {pending_module_count} 个模块待启动"
+        return None
 
     def _terminate_process(self, process: Optional[Process]) -> None:
         if process is None:
