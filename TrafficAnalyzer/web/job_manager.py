@@ -5,6 +5,7 @@ from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import hashlib
 import json
 from multiprocessing import Process
 import os
@@ -1221,23 +1222,26 @@ class JobManager:
 
         matched_key = None
         matched_context = None
+        matched_candidate = None
         for context in contexts:
             for candidate in candidates:
                 if parser.session_key_matches_markers(
                     pass_name=context["pass_param"],
                     left=context["marker_left"],
                     right=context["marker_right"],
-                    key=candidate,
+                    key=str(candidate.get("value") or ""),
                 ):
-                    matched_key = candidate
+                    matched_key = str(candidate.get("value") or "")
                     matched_context = context
+                    matched_candidate = candidate
                     break
             if matched_key is not None:
                 break
 
         exact_match = matched_key is not None
-        if matched_key is None and len(candidates) == 1:
-            matched_key = candidates[0]
+        if matched_key is None and int(source_meta.get("input_count") or 0) == 1 and candidates:
+            matched_candidate = self._preferred_godzilla_key_candidate(candidates)
+            matched_key = str((matched_candidate or {}).get("value") or "")
 
         if matched_key is None:
             return {
@@ -1245,6 +1249,7 @@ class JobManager:
                 "exact_match": False,
                 "candidate_source": source_meta,
                 "candidate_count": len(candidates),
+                "candidate_input_count": int(source_meta.get("input_count") or 0),
                 "contexts": contexts,
             }
 
@@ -1288,7 +1293,10 @@ class JobManager:
             "matched_context": matched_context,
             "candidate_source": source_meta,
             "candidate_count": len(candidates),
+            "candidate_input_count": int(source_meta.get("input_count") or 0),
             "used_key": matched_key,
+            "matched_input": str((matched_candidate or {}).get("source") or ""),
+            "matched_derivation": str((matched_candidate or {}).get("strategy_label") or ""),
             "contexts": decoded_contexts,
         }
 
@@ -1376,11 +1384,13 @@ class JobManager:
         key_text: str | None,
         key_file_name: str | None,
         key_file_bytes: bytes | None,
-    ) -> tuple[list[str], dict]:
+    ) -> tuple[list[dict[str, str]], dict]:
         if key_file_bytes:
-            return self._split_godzilla_key_lines(key_file_bytes), {
+            raw_candidates = self._split_godzilla_key_lines(key_file_bytes)
+            return self._expand_godzilla_key_candidates(raw_candidates), {
                 "mode": "upload_file",
                 "label": key_file_name or "uploaded",
+                "input_count": len(raw_candidates),
             }
 
         text = str(key_text or "").strip()
@@ -1389,15 +1399,25 @@ class JobManager:
 
         file_path = self._normalize_local_input_path(text)
         if file_path and file_path.is_file():
-            return self._split_godzilla_key_lines(file_path.read_bytes()), {
+            raw_candidates = self._split_godzilla_key_lines(file_path.read_bytes())
+            return self._expand_godzilla_key_candidates(raw_candidates), {
                 "mode": "path_file",
                 "label": str(file_path),
+                "input_count": len(raw_candidates),
             }
 
         lines = [item.strip() for item in text.splitlines() if item.strip()]
         if len(lines) > 1:
-            return lines, {"mode": "inline_lines", "label": f"{len(lines)} lines"}
-        return [text], {"mode": "single_key", "label": text}
+            return self._expand_godzilla_key_candidates(lines), {
+                "mode": "inline_lines",
+                "label": f"{len(lines)} lines",
+                "input_count": len(lines),
+            }
+        return self._expand_godzilla_key_candidates([text]), {
+            "mode": "single_key",
+            "label": text,
+            "input_count": 1,
+        }
 
     def _split_godzilla_key_lines(self, payload: bytes) -> list[str]:
         for encoding in ("utf-8", "gb18030", "latin1"):
@@ -1417,6 +1437,57 @@ class JobManager:
             seen.add(candidate)
             rows.append(candidate)
         return rows
+
+    def _expand_godzilla_key_candidates(self, values: list[str]) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        seen: set[str] = set()
+
+        def append(value: str, *, source: str, strategy: str, strategy_label: str) -> None:
+            candidate = str(value or "").strip()
+            if not candidate or candidate in seen:
+                return
+            seen.add(candidate)
+            rows.append(
+                {
+                    "value": candidate,
+                    "source": str(source or "").strip(),
+                    "strategy": strategy,
+                    "strategy_label": strategy_label,
+                }
+            )
+
+        for raw in values:
+            source = str(raw or "").strip()
+            if not source:
+                continue
+            append(source, source=source, strategy="raw", strategy_label="原始输入")
+
+            digest = hashlib.md5(source.encode("utf-8", errors="ignore")).hexdigest().lower()
+            append(digest[:16], source=source, strategy="md5_first16", strategy_label="MD5 前 16 位")
+            append(digest, source=source, strategy="md5_full32", strategy_label="完整 MD5 32 位")
+            append(digest[16:], source=source, strategy="md5_last16", strategy_label="MD5 后 16 位")
+
+        return rows
+
+    def _preferred_godzilla_key_candidate(self, candidates: list[dict[str, str]]) -> dict[str, str] | None:
+        if not candidates:
+            return None
+
+        for strategy in ("raw", "md5_first16", "md5_full32", "md5_last16"):
+            for candidate in candidates:
+                value = str(candidate.get("value") or "").strip()
+                if str(candidate.get("strategy") or "") != strategy:
+                    continue
+                if strategy == "raw" and self._looks_like_godzilla_key(value):
+                    return candidate
+                if strategy != "raw":
+                    return candidate
+
+        return candidates[0]
+
+    def _looks_like_godzilla_key(self, value: str) -> bool:
+        text = str(value or "").strip()
+        return bool(text) and len(text) in {16, 32} and all(ch in "0123456789abcdefABCDEF" for ch in text)
 
     def _normalize_local_input_path(self, raw_path: str) -> Path | None:
         text = str(raw_path or "").strip().strip('"').strip("'")

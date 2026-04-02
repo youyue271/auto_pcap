@@ -29,6 +29,26 @@ class TestRegistryAndRuntime(unittest.TestCase):
         with self.assertRaises(ValueError):
             normalize_artifact_relative_path("../etc/passwd")
 
+    def test_godzilla_key_candidates_expand_dictionary_words_to_md5_variants(self):
+        manager = JobManager()
+        try:
+            candidates, meta = manager._resolve_godzilla_key_candidates(
+                key_text=r"E:\STEVE\project\auto-pcap\tests\陇剑rhg\key.txt",
+                key_file_name=None,
+                key_file_bytes=None,
+            )
+            values = {str(item.get("value") or ""): item for item in candidates}
+
+            self.assertEqual(meta["mode"], "path_file")
+            self.assertEqual(meta["input_count"], 100)
+            self.assertIn("1p79u0ztp", values)
+            self.assertIn("0ca63845f8997771", values)
+            self.assertEqual(values["0ca63845f8997771"]["source"], "1p79u0ztp")
+            self.assertEqual(values["0ca63845f8997771"]["strategy"], "md5_first16")
+        finally:
+            manager.jobs.clear()
+            manager.shutdown()
+
     def test_parse_capinfos_packet_count(self):
         self.assertEqual(_parse_capinfos_packet_count("tests/file.pcapng\t7106"), 7106)
         self.assertEqual(_parse_capinfos_packet_count("7106"), 7106)

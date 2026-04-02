@@ -3684,8 +3684,11 @@ joined_preview=${esc(item.joined_preview || "")}</div>
             <div class="ws-godzilla-kv">
               ${renderGodzillaKvItem("解析状态", statusText)}
               ${renderGodzillaKvItem("使用密钥", payload.used_key || "-")}
+              ${renderGodzillaKvItem("命中来源", payload.matched_input || "-")}
+              ${renderGodzillaKvItem("派生方式", payload.matched_derivation || "-")}
               ${renderGodzillaKvItem("候选来源", sourceText || "-")}
               ${renderGodzillaKvItem("候选数量", String(payload.candidate_count || 0))}
+              ${renderGodzillaKvItem("原始输入数", String(payload.candidate_input_count || 0))}
               ${renderGodzillaKvItem("命中 URI", matchedContext.uri || "-")}
               ${renderGodzillaKvItem("命中参数", matchedContext.pass_param || "-")}
             </div>
