@@ -6,13 +6,26 @@ import logging
 import os
 import shutil
 import subprocess
-from dataclasses import asdict
+import sys
 from typing import Any, Dict, Generator, Iterable, Optional, Sequence
 
 from TrafficAnalyzer.core.models import PacketRecord
 from TrafficAnalyzer.utils.flow_utils import get_flow_id
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_csv_field_limit() -> None:
+    limit = sys.maxsize
+    while limit > 0:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+
+
+_configure_csv_field_limit()
 
 
 class PacketParser:
@@ -55,11 +68,20 @@ class PacketParser:
 
         selected_protocol_parsers = self._resolve_protocol_parsers(protocol_parsers)
         field_names = self._build_field_list(selected_protocol_parsers)
+        next_expected_index = 0
         try:
-            yield from self._parse_file_tshark(pcap_path, field_names)
+            for packet in self._parse_file_tshark(pcap_path, field_names):
+                if packet.index > next_expected_index:
+                    yield from self._parse_file_pyshark(
+                        pcap_path,
+                        start_index=next_expected_index,
+                        stop_index=packet.index,
+                    )
+                yield packet
+                next_expected_index = packet.index + 1
         except Exception as exc:
             logger.warning("tshark fast path failed, fallback to pyshark: %s", exc)
-            yield from self._parse_file_pyshark(pcap_path)
+            yield from self._parse_file_pyshark(pcap_path, start_index=next_expected_index)
 
     def _resolve_protocol_parsers(self, protocol_parsers: Optional[Sequence[Any]]) -> list[Any]:
         if protocol_parsers is not None:
@@ -111,7 +133,6 @@ class PacketParser:
 
         assert proc.stdout is not None
         reader = csv.reader(proc.stdout, delimiter="\t", quotechar='"', escapechar="\\")
-        closed_early = False
         try:
             for index, row in enumerate(reader):
                 if not row:
@@ -121,28 +142,16 @@ class PacketParser:
                 record = self._row_to_record(index, field_names, row)
                 if record is not None:
                     yield record
-        except GeneratorExit:
-            closed_early = True
-            raise
         finally:
             stdout = proc.stdout
             if stdout is not None:
                 stdout.close()
             stderr_stream = proc.stderr
             try:
-                if closed_early:
-                    if proc.poll() is None:
-                        proc.terminate()
-                    try:
-                        proc.wait(timeout=5)
-                    except Exception:
-                        proc.kill()
-                        proc.wait(timeout=5)
-                else:
-                    stderr = stderr_stream.read() if stderr_stream else ""
-                    ret = proc.wait()
-                    if ret != 0:
-                        raise RuntimeError(f"tshark exited with {ret}: {stderr.strip()}")
+                stderr = stderr_stream.read() if stderr_stream else ""
+                ret = proc.wait()
+                if ret != 0:
+                    raise RuntimeError(f"tshark exited with {ret}: {stderr.strip()}")
             finally:
                 if stderr_stream is not None:
                     stderr_stream.close()
@@ -152,6 +161,8 @@ class PacketParser:
             data = dict(zip(field_names, row))
             frame_protocols = str(data.get("frame.protocols") or "").lower()
             layers = [part for part in frame_protocols.split(":") if part]
+            frame_number = self._safe_int(data.get("frame.number"))
+            packet_index = frame_number - 1 if frame_number is not None and frame_number > 0 else index
 
             packet_meta: Dict[str, Any] = {
                 "timestamp": self._safe_float(data.get("frame.time_epoch")),
@@ -192,7 +203,7 @@ class PacketParser:
 
             flow_id = get_flow_id(packet_meta)
             return PacketRecord(
-                index=index,
+                index=packet_index,
                 timestamp=packet_meta["timestamp"],
                 flow_id=flow_id,
                 src_ip=packet_meta.get("src_ip"),
@@ -220,14 +231,25 @@ class PacketParser:
             "request_uri": data.get("http.request.uri"),
             "request_full_uri": data.get("http.request.full_uri"),
             "user_agent": data.get("http.user_agent"),
+            "cookie": data.get("http.cookie"),
+            "set_cookie": data.get("http.set_cookie"),
             "content_type": data.get("http.content_type"),
             "response_code": data.get("http.response.code"),
             "file_data": data.get("http.file_data"),
             "request_line": data.get("http.request.line"),
+            "request_in": data.get("http.request_in"),
+            "response_in": data.get("http.response_in"),
         }
         http_fields = {k: v for k, v in http_fields.items() if v not in (None, "")}
         if http_fields or "http" in layers:
             raw_layers["http"] = http_fields
+
+        tcp_fields = {
+            "stream": data.get("tcp.stream"),
+        }
+        tcp_fields = {k: v for k, v in tcp_fields.items() if v not in (None, "")}
+        if tcp_fields or "tcp" in layers:
+            raw_layers["tcp"] = tcp_fields
 
         dns_fields = {
             "qry_name": data.get("dns.qry.name"),
@@ -279,12 +301,21 @@ class PacketParser:
             return "udp"
         return None
 
-    def _parse_file_pyshark(self, pcap_path: str) -> Generator[PacketRecord, None, None]:
+    def _parse_file_pyshark(
+        self,
+        pcap_path: str,
+        start_index: int = 0,
+        stop_index: int | None = None,
+    ) -> Generator[PacketRecord, None, None]:
         pyshark = self._load_pyshark()
         cap = pyshark.FileCapture(pcap_path, keep_packets=self.keep_packets)
 
         try:
             for idx, packet in enumerate(cap):
+                if idx < start_index:
+                    continue
+                if stop_index is not None and idx >= stop_index:
+                    break
                 rec = self._packet_to_record(packet, idx)
                 if rec is not None:
                     yield rec

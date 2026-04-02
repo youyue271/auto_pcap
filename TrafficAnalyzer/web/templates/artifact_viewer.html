@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ artifact_name }} - Artifact Viewer</title>
+  <style>
+    :root {
+      --bg1: #081427;
+      --bg2: #0c3049;
+      --panel: #10213a;
+      --line: rgba(255, 255, 255, .14);
+      --text: #e2ecfb;
+      --muted: #9db4d4;
+      --accent: #7dd3fc;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 12%, rgba(30, 64, 175, .45), transparent 36%),
+        radial-gradient(circle at 88% 82%, rgba(14, 165, 233, .22), transparent 32%),
+        linear-gradient(145deg, var(--bg1), var(--bg2));
+      padding: 12px;
+    }
+    .shell {
+      max-width: 1600px;
+      margin: 0 auto;
+      height: calc(100vh - 24px);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 10px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 12px 26px rgba(0, 0, 0, .22);
+    }
+    .panel-hd {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(2, 6, 23, .28);
+    }
+    .panel-bd {
+      padding: 12px;
+      min-height: 0;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 6px 0;
+      word-break: break-word;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+    }
+    .meta-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(2, 6, 23, .22);
+      min-width: 0;
+    }
+    .meta-item .k {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .meta-item .v {
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 12px;
+      word-break: break-word;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      align-items: end;
+    }
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .field select,
+    .field input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .55);
+      color: var(--text);
+      font-size: 12px;
+    }
+    .link-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .link-row a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .link-row a:hover {
+      text-decoration: underline;
+    }
+    .preview-wrap {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10px;
+    }
+    .status-line {
+      color: var(--muted);
+      font-size: 12px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .preview-box {
+      height: 100%;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(2, 6, 23, .4);
+      overflow: auto;
+      padding: 12px;
+    }
+    .preview-box pre {
+      margin: 0;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.55;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      white-space: pre;
+    }
+    .preview-box pre.wrap {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .preview-empty {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 24px;
+    }
+    .image-preview {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .02);
+    }
+    .mono {
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="panel">
+      <div class="panel-hd">
+        <div class="title">{{ artifact_name }}</div>
+        <div class="status-line">viewer={{ viewer_url }}</div>
+      </div>
+      <div class="panel-bd">
+        <div class="meta">
+          <div class="meta-item">
+            <div class="k">相对路径</div>
+            <div class="v">{{ relative_path }}</div>
+          </div>
+          <div class="meta-item">
+            <div class="k">文件后缀</div>
+            <div class="v">{{ artifact_suffix or "(none)" }}</div>
+          </div>
+          <div class="meta-item">
+            <div class="k">文件大小</div>
+            <div class="v">{{ artifact_size }} bytes</div>
+          </div>
+          <div class="meta-item">
+            <div class="k">原始文件</div>
+            <div class="v"><a href="{{ raw_url }}" target="_blank" rel="noopener noreferrer">{{ raw_url }}</a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-bd">
+        <div class="toolbar">
+          <div class="field">
+            <label for="encoding-select">编码</label>
+            <select id="encoding-select"></select>
+          </div>
+          <div class="field">
+            <label for="render-mode">显示模式</label>
+            <select id="render-mode">
+              <option value="auto">自动</option>
+              <option value="format">格式化</option>
+              <option value="raw">原始</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wrap-toggle">换行</label>
+            <select id="wrap-toggle">
+              <option value="on">自动换行</option>
+              <option value="off">不换行</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>操作</label>
+            <div class="link-row">
+              <a href="{{ raw_url }}" target="_blank" rel="noopener noreferrer">打开原始文件</a>
+              <a href="{{ raw_url }}" download>下载原始文件</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-bd preview-wrap">
+        <div id="status-line" class="status-line">loading...</div>
+        <div id="preview-box" class="preview-box">
+          <div class="preview-empty">正在加载文件内容...</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const RAW_URL = {{ raw_url | tojson }};
+    const ARTIFACT_NAME = {{ artifact_name | tojson }};
+    const ARTIFACT_SUFFIX = {{ artifact_suffix | tojson }};
+    const RELATIVE_PATH = {{ relative_path | tojson }};
+    const DEFAULT_ENCODINGS = [
+      { value: "auto", label: "自动" },
+      { value: "utf-8", label: "UTF-8" },
+      { value: "gb18030", label: "GB18030" },
+      { value: "gbk", label: "GBK" },
+      { value: "big5", label: "Big5" },
+      { value: "shift_jis", label: "Shift_JIS" },
+      { value: "windows-1252", label: "Windows-1252" },
+      { value: "iso-8859-1", label: "ISO-8859-1" },
+      { value: "utf-16le", label: "UTF-16LE" },
+      { value: "utf-16be", label: "UTF-16BE" },
+    ];
+    const IMAGE_SUFFIXES = new Set([".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg"]);
+    const CODE_SUFFIXES = new Set([
+      ".php", ".phtml", ".php5", ".inc", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+      ".json", ".css", ".scss", ".less", ".html", ".htm", ".xml", ".sql", ".py", ".sh",
+      ".jsp", ".jspx", ".asp", ".aspx", ".java", ".go", ".c", ".cc", ".cpp", ".h", ".hpp",
+      ".rb", ".pl", ".ps1", ".yaml", ".yml", ".ini", ".conf", ".config", ".txt", ".log"
+    ]);
+
+    const encodingSelect = document.getElementById("encoding-select");
+    const renderModeSelect = document.getElementById("render-mode");
+    const wrapToggle = document.getElementById("wrap-toggle");
+    const statusLine = document.getElementById("status-line");
+    const previewBox = document.getElementById("preview-box");
+
+    let rawBytes = null;
+    let decodedCache = new Map();
+
+    function initEncodingOptions() {
+      encodingSelect.innerHTML = DEFAULT_ENCODINGS
+        .map((item) => `<option value="${item.value}">${item.label}</option>`)
+        .join("");
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function detectLanguage(text) {
+      const suffix = String(ARTIFACT_SUFFIX || "").toLowerCase();
+      if (suffix === ".json") return "json";
+      if (suffix === ".css" || suffix === ".scss" || suffix === ".less") return "css";
+      if (suffix === ".html" || suffix === ".htm" || suffix === ".xml" || suffix === ".svg") return "html";
+      if (suffix === ".php" || suffix === ".phtml" || suffix === ".php5" || suffix === ".inc") return "php";
+      if (suffix === ".js" || suffix === ".mjs" || suffix === ".cjs" || suffix === ".ts" || suffix === ".tsx" || suffix === ".jsx") return "javascript";
+      if (suffix === ".sql") return "sql";
+      if (suffix === ".sh" || suffix === ".ps1") return "shell";
+      if (suffix && CODE_SUFFIXES.has(suffix)) return "code";
+      const sample = String(text || "").slice(0, 400).toLowerCase();
+      if (sample.includes("<?php")) return "php";
+      if (sample.includes("<html") || sample.includes("</")) return "html";
+      if (sample.startsWith("{") || sample.startsWith("[")) return "json";
+      return "text";
+    }
+
+    function isCodeFile(text) {
+      if (CODE_SUFFIXES.has(String(ARTIFACT_SUFFIX || "").toLowerCase())) {
+        return true;
+      }
+      const language = detectLanguage(text);
+      return language !== "text";
+    }
+
+    function isProbablyBinary(bytes) {
+      if (!bytes || !bytes.length) return false;
+      let zeroCount = 0;
+      let controlCount = 0;
+      const sample = Math.min(bytes.length, 4096);
+      for (let i = 0; i < sample; i += 1) {
+        const value = bytes[i];
+        if (value === 0) zeroCount += 1;
+        if (value < 9 || (value > 13 && value < 32)) controlCount += 1;
+      }
+      return zeroCount > 0 || (controlCount / sample) > 0.18;
+    }
+
+    function decodeWithEncoding(buffer, encoding) {
+      const key = `${encoding}:${buffer.byteLength}`;
+      if (decodedCache.has(key)) {
+        return decodedCache.get(key);
+      }
+      try {
+        const text = new TextDecoder(encoding, { fatal: false }).decode(buffer);
+        decodedCache.set(key, text);
+        return text;
+      } catch (err) {
+        return "";
+      }
+    }
+
+    function textScore(text) {
+      if (!text) return -1e9;
+      let printable = 0;
+      let replacement = 0;
+      let control = 0;
+      const sample = text.slice(0, 4000);
+      for (const ch of sample) {
+        if (ch === "\ufffd") replacement += 1;
+        if (ch === "\n" || ch === "\r" || ch === "\t" || ch >= " ") printable += 1;
+        if (ch < " " && ch !== "\n" && ch !== "\r" && ch !== "\t") control += 1;
+      }
+      return printable - (replacement * 12) - (control * 4);
+    }
+
+    function chooseBestEncoding(buffer) {
+      const candidates = DEFAULT_ENCODINGS
+        .map((item) => item.value)
+        .filter((value) => value !== "auto");
+      let best = { encoding: "utf-8", text: "", score: -1e9 };
+      for (const encoding of candidates) {
+        const text = decodeWithEncoding(buffer, encoding);
+        const score = textScore(text);
+        if (score > best.score) {
+          best = { encoding, text, score };
+        }
+      }
+      return best;
+    }
+
+    function normalizeLines(text) {
+      return String(text || "").replace(/\r\n?/g, "\n");
+    }
+
+    function formatJsonLike(text) {
+      try {
+        return JSON.stringify(JSON.parse(text), null, 2);
+      } catch (err) {
+        return text;
+      }
+    }
+
+    function formatCssLike(text) {
+      let normalized = normalizeLines(text)
+        .replace(/\s*{\s*/g, " {\n")
+        .replace(/;\s*/g, ";\n")
+        .replace(/\s*}\s*/g, "\n}\n")
+        .replace(/\n{3,}/g, "\n\n");
+      const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+      let indent = 0;
+      const out = [];
+      for (const line of lines) {
+        if (line.startsWith("}")) indent = Math.max(0, indent - 1);
+        out.push(`${"  ".repeat(indent)}${line}`);
+        if (line.endsWith("{")) indent += 1;
+      }
+      return out.join("\n");
+    }
+
+    function formatBraceCode(text) {
+      let normalized = normalizeLines(text)
+        .replace(/<\?(php)?/gi, (match) => `\n${match}\n`)
+        .replace(/\?>/g, "\n?>\n")
+        .replace(/([{}])/g, "\n$1\n")
+        .replace(/;/g, ";\n")
+        .replace(/\n{3,}/g, "\n\n");
+      const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+      let indent = 0;
+      const out = [];
+      for (const line of lines) {
+        if (/^[}\])]/.test(line) || line === "?>") {
+          indent = Math.max(0, indent - 1);
+        }
+        out.push(`${"  ".repeat(indent)}${line}`);
+        if (line.endsWith("{")) {
+          indent += 1;
+        }
+      }
+      return out.join("\n");
+    }
+
+    function formatHtmlLike(text) {
+      let normalized = normalizeLines(text)
+        .replace(/>\s*</g, ">\n<")
+        .replace(/(<\?php[\s\S]*?\?>)/gi, "\n$1\n")
+        .replace(/\n{3,}/g, "\n\n");
+      const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+      let indent = 0;
+      const out = [];
+      for (const line of lines) {
+        if (/^<\//.test(line)) {
+          indent = Math.max(0, indent - 1);
+        }
+        out.push(`${"  ".repeat(indent)}${line}`);
+        if (/^<[^!/][^>]*>$/.test(line) && !/\/>$/.test(line) && !/^<\?/.test(line) && !/^<.*<\/.*>$/.test(line)) {
+          indent += 1;
+        }
+      }
+      return out.join("\n");
+    }
+
+    function formatText(text, language) {
+      if (language === "json") return formatJsonLike(text);
+      if (language === "css") return formatCssLike(text);
+      if (language === "html") return formatHtmlLike(text);
+      if (language === "php" || language === "javascript" || language === "sql" || language === "shell" || language === "code") {
+        return formatBraceCode(text);
+      }
+      return normalizeLines(text);
+    }
+
+    function renderBinaryPreview(bytes) {
+      const preview = Array.from(bytes.slice(0, 512))
+        .map((value) => value.toString(16).padStart(2, "0"))
+        .join(" ");
+      previewBox.innerHTML = `
+        <div class="preview-empty">当前文件更像是二进制内容，不做文本解码。下面展示前 512 字节十六进制预览。</div>
+        <pre class="mono wrap">${escapeHtml(preview || "(empty)")}</pre>
+      `;
+    }
+
+    function renderImagePreview() {
+      previewBox.innerHTML = `<img class="image-preview" src="${escapeHtml(RAW_URL)}" alt="${escapeHtml(ARTIFACT_NAME)}">`;
+    }
+
+    function renderTextPreview(text, encoding, mode) {
+      const language = detectLanguage(text);
+      const shouldFormat = mode === "format" || (mode === "auto" && isCodeFile(text));
+      const output = shouldFormat ? formatText(text, language) : normalizeLines(text);
+      const wrapClass = wrapToggle.value === "on" ? "wrap" : "";
+      previewBox.innerHTML = `<pre class="${wrapClass}">${escapeHtml(output || "(empty)")}</pre>`;
+      statusLine.textContent = [
+        `path=${RELATIVE_PATH}`,
+        `encoding=${encoding}`,
+        `language=${language}`,
+        `mode=${shouldFormat ? "format" : "raw"}`,
+        `bytes=${rawBytes.length}`,
+      ].join(" | ");
+    }
+
+    function renderPreview() {
+      if (!rawBytes) return;
+      const suffix = String(ARTIFACT_SUFFIX || "").toLowerCase();
+      if (IMAGE_SUFFIXES.has(suffix)) {
+        statusLine.textContent = `path=${RELATIVE_PATH} | kind=image | bytes=${rawBytes.length}`;
+        renderImagePreview();
+        return;
+      }
+
+      if (isProbablyBinary(rawBytes) && !CODE_SUFFIXES.has(suffix)) {
+        statusLine.textContent = `path=${RELATIVE_PATH} | kind=binary | bytes=${rawBytes.length}`;
+        renderBinaryPreview(rawBytes);
+        return;
+      }
+
+      const selected = String(encodingSelect.value || "auto");
+      const best = selected === "auto"
+        ? chooseBestEncoding(rawBytes)
+        : { encoding: selected, text: decodeWithEncoding(rawBytes, selected) };
+      renderTextPreview(best.text, best.encoding, String(renderModeSelect.value || "auto"));
+    }
+
+    async function loadArtifact() {
+      try {
+        initEncodingOptions();
+        const response = await fetch(RAW_URL, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        rawBytes = new Uint8Array(await response.arrayBuffer());
+        renderPreview();
+      } catch (err) {
+        statusLine.textContent = `load_error=${String(err)}`;
+        previewBox.innerHTML = `<div class="preview-empty">文件加载失败: ${escapeHtml(String(err))}</div>`;
+      }
+    }
+
+    for (const element of [encodingSelect, renderModeSelect, wrapToggle]) {
+      element.addEventListener("change", renderPreview);
+      element.addEventListener("input", renderPreview);
+    }
+
+    loadArtifact();
+  </script>
+</body>
+</html>

@@ -38,6 +38,7 @@ class AttackAlert:
     severity: str
     confidence: float
     description: str
+    detector: Optional[str] = None
     packet_indexes: List[int] = field(default_factory=list)
     flow_id: Optional[str] = None
     evidence: Dict[str, Any] = field(default_factory=dict)
@@ -50,4 +51,3 @@ class AnalysisReport:
     protocol_events: List[ProtocolEvent] = field(default_factory=list)
     alerts: List[AttackAlert] = field(default_factory=list)
     stats: Dict[str, Any] = field(default_factory=dict)
-

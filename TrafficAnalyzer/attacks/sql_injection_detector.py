@@ -67,6 +67,7 @@ class SQLInjectionDetector(BaseAttackDetector):
                     severity=severity,
                     confidence=round(confidence, 2),
                     description="HTTP 请求中出现 SQL 注入特征模式",
+                    detector=self.name,
                     packet_indexes=[packet.index],
                     flow_id=packet.flow_id,
                     evidence={

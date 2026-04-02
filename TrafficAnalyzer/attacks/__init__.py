@@ -1,9 +1,7 @@
 from TrafficAnalyzer.config import ATTACK_DETECTOR_PATHS, DETECTOR_CONFIGS
 from TrafficAnalyzer.core.factory import build_instances
 from TrafficAnalyzer.attacks.base import BaseAttackDetector
-from TrafficAnalyzer.attacks.behinder_detector import BehinderDetector
-from TrafficAnalyzer.attacks.port_scan_detector import PortScanDetector
-from TrafficAnalyzer.attacks.sql_injection_detector import SQLInjectionDetector
+from TrafficAnalyzer.attacks.webshell_detector import WebShellDetector
 
 
 def build_attack_detectors() -> list[BaseAttackDetector]:
@@ -12,8 +10,6 @@ def build_attack_detectors() -> list[BaseAttackDetector]:
 
 __all__ = [
     "BaseAttackDetector",
-    "PortScanDetector",
-    "SQLInjectionDetector",
-    "BehinderDetector",
+    "WebShellDetector",
     "build_attack_detectors",
 ]

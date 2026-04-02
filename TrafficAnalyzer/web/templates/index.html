@@ -348,6 +348,17 @@
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
+    .result-workspace {
+      position: relative;
+    }
+    .result-tabs-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 12;
+      padding: 2px 0 10px;
+      background: linear-gradient(180deg, rgba(16, 33, 58, .98), rgba(16, 33, 58, .94) 72%, rgba(16, 33, 58, 0));
+      backdrop-filter: blur(8px);
+    }
     .tab-btn {
       border: 1px solid var(--line);
       border-radius: 999px;
@@ -377,6 +388,559 @@
     }
     .metric .k { font-size: 12px; color: var(--muted); }
     .metric .v { font-size: 22px; margin-top: 3px; font-weight: 700; }
+    .overview-protocols {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(2, 6, 23, .28);
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .overview-protocol-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .overview-protocol-card {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(2, 6, 23, .34);
+      padding: 8px;
+    }
+    .overview-protocol-card .name {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .overview-protocol-card .count {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .overview-protocol-card .ratio {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 3px;
+    }
+    .overview-pie-wrap {
+      display: grid;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+    }
+    .overview-pie {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      margin: 0 auto;
+      position: relative;
+      box-shadow: inset 0 0 40px rgba(0, 0, 0, .15);
+    }
+    .overview-pie::after {
+      content: "";
+      position: absolute;
+      inset: 28%;
+      border-radius: 50%;
+      background: rgba(8, 20, 39, .92);
+      border: 1px solid rgba(255, 255, 255, .08);
+    }
+    .overview-pie-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+      text-align: center;
+      pointer-events: none;
+    }
+    .overview-pie-center .k {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .overview-pie-center .v {
+      font-size: 24px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .overview-legend {
+      display: grid;
+      gap: 8px;
+    }
+    .overview-legend-item {
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px;
+      background: rgba(2, 6, 23, .34);
+      font-size: 12px;
+    }
+    .overview-legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+    }
+    .overview-legend-name {
+      min-width: 0;
+      word-break: break-word;
+    }
+    .overview-legend-count {
+      color: #bfdbfe;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .overview-legend-ratio {
+      color: var(--muted);
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .overview-empty {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      color: var(--muted);
+      background: rgba(2, 6, 23, .2);
+    }
+    .overview-recommend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .overview-recommend-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(2, 6, 23, .34);
+      display: grid;
+      gap: 6px;
+    }
+    .overview-recommend-card .name {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .overview-recommend-card .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .scroll-box {
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .18);
+    }
+    .scroll-box table {
+      margin: 0;
+    }
+    .scroll-box thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: rgba(12, 20, 36, .98);
+    }
+    @media (max-width: 900px) {
+      .overview-pie-wrap {
+        grid-template-columns: 1fr;
+      }
+      .overview-pie {
+        width: 200px;
+        height: 200px;
+      }
+    }
+    .ws-command {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: rgba(2, 6, 23, .34);
+      overflow: hidden;
+      min-width: 0;
+    }
+    .ws-command-meta {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 8px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .ws-command pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-size: 11px;
+      line-height: 1.45;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .ws-pre-block {
+      margin: 0 0 10px 0;
+      white-space: pre-wrap;
+      font-size: 11px;
+      line-height: 1.45;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      max-width: 100%;
+    }
+    .ws-command-links {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--line);
+      display: grid;
+      gap: 4px;
+      font-size: 11px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .ws-command-links a {
+      color: #7dd3fc;
+      text-decoration: none;
+    }
+    .ws-command-links a:hover {
+      text-decoration: underline;
+    }
+    .ws-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+    }
+    .ws-meta-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(2, 6, 23, .34);
+      min-width: 0;
+    }
+    .ws-meta-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 8px;
+      letter-spacing: .3px;
+    }
+    .ws-meta-body {
+      white-space: pre-wrap;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .ws-filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .ws-filter-row label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .ws-filter-row select {
+      min-width: 240px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .55);
+      color: var(--text);
+      font-size: 12px;
+    }
+    .ws-filter-row input[type="text"] {
+      min-width: 240px;
+      flex: 1 1 320px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .55);
+      color: var(--text);
+      font-size: 12px;
+    }
+    .ws-filter-row input[type="file"] {
+      max-width: 100%;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .ws-inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .ws-primary-btn {
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(14, 165, 233, .18);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .ws-primary-btn:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+    .ws-godzilla-box {
+      display: grid;
+      gap: 10px;
+      padding-top: 10px;
+    }
+    .ws-godzilla-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .ws-godzilla-result {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(2, 6, 23, .26);
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+    .ws-godzilla-kv {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+    }
+    .ws-godzilla-kv .item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(2, 6, 23, .24);
+      min-width: 0;
+    }
+    .ws-godzilla-kv .k {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .ws-godzilla-kv .v {
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .ws-godzilla-entry {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: rgba(2, 6, 23, .22);
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .ws-godzilla-entry-title {
+      color: var(--muted);
+      font-size: 11px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .ws-godzilla-section-title {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: .2px;
+    }
+    .ws-godzilla-entry pre {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-size: 11px;
+      line-height: 1.45;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .http-json-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: rgba(2, 6, 23, .34);
+    }
+    .http-json-meta,
+    .http-json-summary {
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+    }
+    .http-json-meta {
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .http-json-summary {
+      color: #bfdbfe;
+      margin-bottom: 8px;
+    }
+    .http-json-card pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-size: 11px;
+      line-height: 1.45;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .http-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .http-filter-field {
+      display: grid;
+      gap: 5px;
+    }
+    .http-filter-field label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .http-filter-field select,
+    .http-filter-field input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .55);
+      color: var(--text);
+      font-size: 12px;
+    }
+    .http-filter-count {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .http-site-scroll {
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .18);
+      padding: 10px;
+    }
+    .http-site-group {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(2, 6, 23, .34);
+      margin-bottom: 10px;
+    }
+    .http-site-tree {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 12px;
+    }
+    .http-site-node {
+      margin-left: 10px;
+      padding-left: 10px;
+      border-left: 1px dashed var(--line);
+    }
+    .http-site-node > summary {
+      cursor: pointer;
+      list-style: none;
+      color: #bfdbfe;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .http-site-node > summary::-webkit-details-marker {
+      display: none;
+    }
+    .http-site-branch {
+      display: grid;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .http-site-leaf {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+    .http-site-leaf a,
+    .http-site-node > summary a {
+      color: #7dd3fc;
+      text-decoration: none;
+    }
+    .http-site-leaf a:hover,
+    .http-site-node > summary a:hover {
+      text-decoration: underline;
+    }
+    .http-site-meta {
+      color: var(--muted);
+      font-size: 11px;
+      margin-left: 8px;
+    }
+    .dns-pattern-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .dns-pattern-card,
+    .dns-output-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(2, 6, 23, .34);
+    }
+    .dns-pattern-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .dns-pattern-meta {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .dns-template-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .dns-template-field {
+      display: grid;
+      gap: 5px;
+    }
+    .dns-template-field label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .dns-template-field select,
+    .dns-template-field input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(2, 6, 23, .55);
+      color: var(--text);
+      font-size: 12px;
+    }
+    .dns-output-card pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-size: 11px;
+      line-height: 1.45;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      max-width: 100%;
+      overflow: auto;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -529,8 +1093,8 @@
           <h3>结果工作区</h3>
           <span class="muted">按模块分栏展示结果</span>
         </div>
-        <div class="panel-bd">
-          <div id="result-tabs" class="toolbar"></div>
+        <div class="panel-bd result-workspace">
+          <div id="result-tabs" class="toolbar result-tabs-sticky"></div>
           <div id="result-panes"></div>
         </div>
       </section>
@@ -571,11 +1135,7 @@
     const resultTabs = document.getElementById("result-tabs");
     const resultPanes = document.getElementById("result-panes");
 
-    const ruleMap = {
-      PortScanDetector: "ATTACK.PORT_SCAN",
-      SQLInjectionDetector: "ATTACK.SQL_INJECTION",
-      BehinderDetector: "ATTACK.BEHINDER",
-    };
+    const ruleMap = {};
 
     let projectCatalog = [];
     let selectedProjectIds = new Set();
@@ -589,6 +1149,9 @@
     let latestStatus = null;
     let latestResults = null;
     let lastLoggedTotalPackets = null;
+    let currentResultTabId = "overview";
+    let currentInspectTabId = "overview";
+    const paneUiState = {};
 
     const layout = {
       left: 25,
@@ -671,6 +1234,118 @@
       const percent = job.progress?.percent != null ? `${job.progress.percent.toFixed(2)}%` : "-";
       const base = `${parsed.toLocaleString()} / ${Number(total).toLocaleString()} (${percent})`;
       return updatedAt ? `${base} · ${updatedAt}` : base;
+    }
+
+    function getPaneUiState(key, defaults = {}) {
+      const scopedKey = `${currentProjectId || currentJobId || "default"}:${key}`;
+      paneUiState[scopedKey] = { ...defaults, ...(paneUiState[scopedKey] || {}) };
+      return paneUiState[scopedKey];
+    }
+
+    function printableRatio(text) {
+      const value = String(text || "");
+      if (!value) return 0;
+      let printable = 0;
+      for (const ch of value) {
+        if ((ch >= " " && ch <= "~") || ch === "\n" || ch === "\r" || ch === "\t") {
+          printable += 1;
+        }
+      }
+      return printable / value.length;
+    }
+
+    function looksLikeHex(value) {
+      const text = String(value || "").trim();
+      return !!text && /^[0-9a-fA-F]+$/.test(text);
+    }
+
+    function looksLikeBase64(value) {
+      const text = String(value || "").trim();
+      return !!text && text.length >= 8 && /^[A-Za-z0-9+/=_-]+$/.test(text);
+    }
+
+    function decodeHexText(value) {
+      const text = String(value || "").trim();
+      if (!looksLikeHex(text) || text.length % 2 !== 0) return null;
+      let output = "";
+      for (let index = 0; index < text.length; index += 2) {
+        const chunk = Number.parseInt(text.slice(index, index + 2), 16);
+        if (Number.isNaN(chunk)) return null;
+        output += String.fromCharCode(chunk);
+      }
+      return printableRatio(output) >= 0.85 ? output : null;
+    }
+
+    function decodeBase64Text(value) {
+      const text = String(value || "").trim();
+      if (!looksLikeBase64(text)) return null;
+      const normalized = text.replaceAll("-", "+").replaceAll("_", "/");
+      const padded = normalized + "=".repeat((4 - (normalized.length % 4 || 4)) % 4);
+      try {
+        const output = atob(padded);
+        return printableRatio(output) >= 0.85 ? output : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function decodeDnsChain(value, mode = "auto") {
+      let current = String(value || "").trim();
+      if (!current) return { text: "", chain: [] };
+      const chain = [];
+
+      const applyMode = (kind, input) => {
+        if (kind === "hex") return decodeHexText(input);
+        if (kind === "base64") return decodeBase64Text(input);
+        return input;
+      };
+
+      if (mode === "hex" || mode === "base64") {
+        const first = applyMode(mode, current);
+        if (!first) return { text: current, chain };
+        current = first;
+        chain.push(mode);
+      }
+
+      if (mode === "auto" || mode === "hex" || mode === "base64") {
+        for (let index = 0; index < 8; index += 1) {
+          let next = null;
+          let step = "";
+          if (looksLikeHex(current) && current.length % 2 === 0) {
+            next = decodeHexText(current);
+            step = "hex";
+          }
+          if (!next && looksLikeBase64(current)) {
+            next = decodeBase64Text(current);
+            step = "base64";
+          }
+          if (!next || next === current) break;
+          current = next;
+          chain.push(step);
+        }
+      }
+
+      return { text: current, chain };
+    }
+
+    function extractDnsTemplateValue(rawValue, extractor, delimiter, segmentIndex) {
+      const text = String(rawValue || "").trim();
+      if (!text) return "";
+      if (extractor === "first_label") {
+        return delimiter ? String(text.split(delimiter)[0] || "").trim() : text;
+      }
+      if (extractor === "last_label") {
+        return delimiter ? String(text.split(delimiter).slice(-1)[0] || "").trim() : text;
+      }
+      if (extractor === "nth_label") {
+        const parts = delimiter ? text.split(delimiter) : [text];
+        const index = Math.max(0, Number(segmentIndex || 0));
+        return String(parts[index] || "").trim();
+      }
+      if (extractor === "joined_labels") {
+        return delimiter ? text.split(delimiter).map((item) => item.trim()).filter(Boolean).join("") : text;
+      }
+      return text;
     }
 
     function projectStatusMode(status) {
@@ -798,6 +1473,8 @@
       lastRevision = -1;
       lastResultsRevision = -1;
       lastLoggedTotalPackets = null;
+      currentResultTabId = "overview";
+      currentInspectTabId = "overview";
       activeModules = [];
       stopPolling();
       document.getElementById("meta-file-name").textContent = "-";
@@ -874,6 +1551,34 @@
       board.style.gridTemplateColumns = `${layout.left}% 8px ${layout.mid}% 8px ${layout.right}%`;
     }
 
+    function isContextResultTab(tabId) {
+      return tabId === "overview" || String(tabId || "").startsWith("module-");
+    }
+
+    function getModuleByTabId(tabId) {
+      if (!String(tabId || "").startsWith("module-")) return null;
+      return activeModules.find((module) => `module-${module.type}-${module.name}` === tabId) || null;
+    }
+
+    function getInspectContext() {
+      const tabId = isContextResultTab(currentInspectTabId) ? currentInspectTabId : "overview";
+      const module = getModuleByTabId(tabId);
+      if (module) {
+        return {
+          kind: "module",
+          tabId,
+          module,
+          label: `${module.type === "protocol" ? "协议" : "攻击"}:${module.name}`,
+        };
+      }
+      return {
+        kind: "overview",
+        tabId: "overview",
+        module: null,
+        label: "总览",
+      };
+    }
+
     function applyTopLayout() {
       if (!layout.topManual || layout.topPx == null) {
         appShell.style.gridTemplateRows = "auto 8px minmax(0, 1fr)";
@@ -886,51 +1591,41 @@
       let dragMode = null;
       let startX = 0;
       let startY = 0;
-      let startLeft = 0;
-      let startMid = 0;
-      let startRight = 0;
+      let startLeftPx = 0;
+      let startMidPx = 0;
+      let startRightPx = 0;
       let startTopPx = 0;
+
+      const minLeftPx = 240;
+      const minMidPx = 240;
+      const minRightPx = 320;
+      const minTopPx = 186;
+      const minBottomPx = 260;
 
       const onMove = (e) => {
         if (!dragMode) return;
         if (dragMode === "left") {
           const rect = board.getBoundingClientRect();
           const usable = rect.width - 16;
-          const deltaPct = ((e.clientX - startX) / usable) * 100;
-          let left = clamp(startLeft + deltaPct, 15, 70);
-          let mid = startMid - deltaPct;
-          if (mid < 15) {
-            mid = 15;
-            left = 100 - layout.right - mid;
-          }
-          if (left < 15) left = 15;
-          layout.left = left;
-          layout.mid = mid;
-          layout.right = 100 - left - mid;
-          if (layout.right < 20) {
-            layout.right = 20;
-            layout.mid = 100 - layout.left - layout.right;
-          }
+          const nextLeftPx = clamp(startLeftPx + (e.clientX - startX), minLeftPx, usable - startRightPx - minMidPx);
+          const nextMidPx = usable - nextLeftPx - startRightPx;
+          layout.left = (nextLeftPx / usable) * 100;
+          layout.mid = (nextMidPx / usable) * 100;
+          layout.right = (startRightPx / usable) * 100;
           applyBoardLayout();
         } else if (dragMode === "right") {
           const rect = board.getBoundingClientRect();
           const usable = rect.width - 16;
-          const deltaPct = ((e.clientX - startX) / usable) * 100;
-          let mid = clamp(startMid + deltaPct, 15, 70);
-          let right = startRight - deltaPct;
-          if (right < 20) {
-            right = 20;
-            mid = 100 - layout.left - right;
-          }
-          if (mid < 15) mid = 15;
-          layout.mid = mid;
-          layout.right = 100 - layout.left - mid;
+          const nextMidPx = clamp(startMidPx + (e.clientX - startX), minMidPx, usable - startLeftPx - minRightPx);
+          const nextRightPx = usable - startLeftPx - nextMidPx;
+          layout.left = (startLeftPx / usable) * 100;
+          layout.mid = (nextMidPx / usable) * 100;
+          layout.right = (nextRightPx / usable) * 100;
           applyBoardLayout();
         } else if (dragMode === "horizontal") {
           const rect = appShell.getBoundingClientRect();
-          const minTop = Math.max(186, topPanel.scrollHeight + 4);
-          const maxTop = rect.height - 230;
-          const next = clamp(startTopPx + (e.clientY - startY), minTop, maxTop);
+          const maxTop = Math.max(minTopPx, rect.height - minBottomPx - 8);
+          const next = clamp(startTopPx + (e.clientY - startY), minTopPx, maxTop);
           layout.topManual = true;
           layout.topPx = next;
           applyTopLayout();
@@ -948,8 +1643,11 @@
         if (window.innerWidth <= 1050) return;
         dragMode = "left";
         startX = e.clientX;
-        startLeft = layout.left;
-        startMid = layout.mid;
+        const rect = board.getBoundingClientRect();
+        const usable = rect.width - 16;
+        startLeftPx = (layout.left / 100) * usable;
+        startMidPx = (layout.mid / 100) * usable;
+        startRightPx = (layout.right / 100) * usable;
         document.body.style.userSelect = "none";
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
@@ -959,8 +1657,11 @@
         if (window.innerWidth <= 1050) return;
         dragMode = "right";
         startX = e.clientX;
-        startMid = layout.mid;
-        startRight = layout.right;
+        const rect = board.getBoundingClientRect();
+        const usable = rect.width - 16;
+        startLeftPx = (layout.left / 100) * usable;
+        startMidPx = (layout.mid / 100) * usable;
+        startRightPx = (layout.right / 100) * usable;
         document.body.style.userSelect = "none";
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
@@ -1619,7 +2320,9 @@
         });
       }
 
-      const activeTab = resultTabs.querySelector(".tab-btn.active")?.dataset.tab || "overview";
+      const tabIds = new Set(tabs.map((item) => item.id));
+      if (!tabIds.has(currentResultTabId)) currentResultTabId = "overview";
+      if (!tabIds.has(currentInspectTabId) || !isContextResultTab(currentInspectTabId)) currentInspectTabId = "overview";
       resultTabs.innerHTML = "";
       resultPanes.innerHTML = "";
       for (const tab of tabs) {
@@ -1642,16 +2345,22 @@
       renderRawPane();
       renderModulePanes();
 
-      switchTab(tabs.some((t) => t.id === activeTab) ? activeTab : "overview");
+      switchTab(currentResultTabId);
     }
 
     function switchTab(tabId) {
+      currentResultTabId = tabId;
+      if (isContextResultTab(tabId)) {
+        currentInspectTabId = tabId;
+      }
       resultTabs.querySelectorAll(".tab-btn").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.tab === tabId);
       });
       resultPanes.querySelectorAll(".tab-pane").forEach((pane) => {
         pane.classList.toggle("active", pane.id === `pane-${tabId}`);
       });
+      if (tabId === "debug") renderDebugPane();
+      if (tabId === "raw") renderRawPane();
     }
 
     function renderOverviewPane() {
@@ -1662,10 +2371,84 @@
       const progressText = job ? formatParseProgress(job) : "0 / -";
       const totalPacketText = formatCount(job?.source_packet_count ?? job?.target_packet_count, job?.source_packet_count_estimated);
 
-      const dist = aggregateProtocolDistribution();
-      const distRows = Object.entries(dist).sort((a, b) => b[1] - a[1])
+      const baseDist = overview.basic_protocol_distribution || {};
+      const dist = Object.keys(baseDist).length ? baseDist : aggregateProtocolDistribution();
+      const distEntries = Object.entries(dist).sort((a, b) => b[1] - a[1]);
+      const recommendations = Array.isArray(overview.recommended_protocol_modules) ? overview.recommended_protocol_modules : [];
+      const distRows = distEntries
         .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`)
         .join("") || `<tr><td colspan="2" class="muted">无数据</td></tr>`;
+      const totalProtocolEvents = distEntries.reduce((sum, [, value]) => sum + Number(value || 0), 0);
+      const protocolPalette = ["#38bdf8", "#22c55e", "#f59e0b", "#ef4444", "#a78bfa", "#14b8a6", "#f97316", "#eab308"];
+      const protocolCards = distEntries.length
+        ? distEntries.map(([name, count]) => {
+            const ratio = totalProtocolEvents > 0 ? `${((Number(count || 0) / totalProtocolEvents) * 100).toFixed(1)}%` : "0.0%";
+            return `
+              <div class="overview-protocol-card">
+                <div class="name">${esc(name)}</div>
+                <div class="count">${esc(String(count))}</div>
+                <div class="ratio">${esc(ratio)}</div>
+              </div>
+            `;
+          }).join("")
+        : `<div class="overview-empty">当前没有可视化的协议结果。把协议模块拖进工作区后，这里会显示分布。</div>`;
+
+      let protocolPie = `<div class="overview-empty">暂无协议分布数据</div>`;
+      if (distEntries.length) {
+        let offset = 0;
+        const segments = [];
+        const legend = [];
+        distEntries.forEach(([name, count], index) => {
+          const color = protocolPalette[index % protocolPalette.length];
+          const value = Number(count || 0);
+          const percent = totalProtocolEvents > 0 ? (value / totalProtocolEvents) * 100 : 0;
+          const end = offset + percent;
+          segments.push(`${color} ${offset.toFixed(2)}% ${end.toFixed(2)}%`);
+          legend.push(`
+            <div class="overview-legend-item">
+              <span class="overview-legend-swatch" style="background:${color};"></span>
+              <span class="overview-legend-name">${esc(name)}</span>
+              <span class="overview-legend-count">${esc(String(count))}</span>
+              <span class="overview-legend-ratio">${esc(percent.toFixed(1))}%</span>
+            </div>
+          `);
+          offset = end;
+        });
+        protocolPie = `
+          <div class="overview-pie-wrap">
+            <div class="overview-pie" style="background: conic-gradient(${segments.join(", ")});">
+              <div class="overview-pie-center">
+                <div class="k">协议事件</div>
+                <div class="v">${esc(String(totalProtocolEvents))}</div>
+              </div>
+            </div>
+            <div class="overview-legend">${legend.join("")}</div>
+          </div>
+        `;
+      }
+
+      const recommendationCards = recommendations.length
+        ? recommendations.map((item) => {
+            const exists = activeModules.some((module) => module.type === item.type && module.name === item.name);
+            return `
+              <div class="overview-recommend-card">
+                <div class="name">${esc(item.name)}</div>
+                <div class="meta">基础层级命中 ${esc(String(item.count || 0))} 条</div>
+                <div class="meta">${esc(item.description || "")}</div>
+                <div class="actions">
+                  <button
+                    type="button"
+                    class="tiny-btn ${exists ? "secondary" : ""}"
+                    data-action="overview-add-module"
+                    data-type="${esc(item.type || "protocol")}"
+                    data-name="${esc(item.name)}"
+                    ${exists ? "disabled" : ""}
+                  >${exists ? "已加入" : "加入解析"}</button>
+                </div>
+              </div>
+            `;
+          }).join("")
+        : `<div class="overview-empty">基础层级统计暂未命中已注册协议模块。</div>`;
 
       pane.innerHTML = `
         <div class="grid3">
@@ -1676,11 +2459,30 @@
           <div class="metric"><div class="k">攻击告警</div><div class="v">${overview.alert_count || 0}</div></div>
           <div class="metric"><div class="k">最近刷新</div><div class="v" style="font-size:16px;">${esc(progress.updated_at ? new Date(progress.updated_at).toLocaleTimeString() : "-")}</div></div>
         </div>
+        <div class="overview-protocols">
+          <div class="muted" style="margin-bottom:8px;">基础协议层级统计</div>
+          <div class="overview-protocol-grid">${protocolCards}</div>
+          ${protocolPie}
+        </div>
+        <div class="overview-protocols">
+          <div class="muted" style="margin-bottom:8px;">推荐解析模块</div>
+          <div class="overview-recommend-grid">${recommendationCards}</div>
+        </div>
         <table>
           <thead><tr><th>协议</th><th>事件数</th></tr></thead>
           <tbody>${distRows}</tbody>
         </table>
       `;
+
+      pane.querySelectorAll("button[data-action='overview-add-module']").forEach((button) => {
+        button.addEventListener("click", async () => {
+          await addActiveModule({
+            type: button.dataset.type || "protocol",
+            name: button.dataset.name || "",
+            description: findModuleDescription(button.dataset.type || "protocol", button.dataset.name || ""),
+          });
+        });
+      });
     }
 
     function aggregateProtocolDistribution() {
@@ -1688,8 +2490,10 @@
       for (const module of activeModules) {
         if (module.type !== "protocol") continue;
         const m = getModuleResult(module);
+        const moduleSummary = m?.result?.summary || {};
         const detail = m?.result?.detail || {};
-        if (detail.request_count != null) summary[module.name] = Number(detail.request_count || 0);
+        if (moduleSummary.protocol_event_count != null) summary[module.name] = Number(moduleSummary.protocol_event_count || 0);
+        else if (detail.request_count != null) summary[module.name] = Number(detail.request_count || 0);
         else if (detail.query_count != null) summary[module.name] = Number(detail.query_count || 0);
         else if (detail.session_count != null) summary[module.name] = Number(detail.session_count || 0);
         else if (detail.operation_count != null) summary[module.name] = Number(detail.operation_count || 0);
@@ -1700,6 +2504,58 @@
 
     function renderDebugPane() {
       const pane = document.getElementById("pane-debug");
+      const context = getInspectContext();
+      if (context.kind === "module") {
+        const item = getModuleResult(context.module);
+        const dbg = item?.result?.debug || {};
+        const stage = dbg.stage_ms || {};
+        const throughput = dbg.throughput || {};
+        const componentOutputs = dbg.component_outputs || {};
+        const relevantCount = context.module.type === "protocol"
+          ? componentOutputs.protocol_event_count_by_parser?.[context.module.name]
+          : componentOutputs.alert_count_by_detector?.[context.module.name];
+        const errors = Array.isArray(dbg.errors) ? dbg.errors : [];
+        const stageRows = Object.entries(stage).map(([key, value]) => `
+          <tr>
+            <td>${esc(key)}</td>
+            <td>${esc(value)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="2" class="muted">暂无阶段耗时</td></tr>`;
+        const errorRows = errors.map((item) => `
+          <tr>
+            <td>${esc(item.component || "-")}</td>
+            <td>${esc(item.error || item.message || JSON.stringify(item))}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="2" class="muted">暂无异常</td></tr>`;
+
+        pane.innerHTML = `
+          <div class="muted" style="margin-bottom:8px;">当前调试上下文：${esc(context.label)}。这个面板会跟随你上一次选中的结果页签。</div>
+          <div class="grid3">
+            <div class="metric"><div class="k">总耗时(ms)</div><div class="v">${esc(stage.total ?? "-")}</div></div>
+            <div class="metric"><div class="k">异常数</div><div class="v">${esc(dbg.error_count ?? "-")}</div></div>
+            <div class="metric"><div class="k">${context.module.type === "protocol" ? "协议事件" : "告警数"}</div><div class="v">${esc(relevantCount ?? "-")}</div></div>
+            <div class="metric"><div class="k">吞吐(p/s)</div><div class="v">${esc(throughput.packets_per_second ?? "-")}</div></div>
+            <div class="metric"><div class="k">started_at</div><div class="v" style="font-size:14px;">${esc(dbg.started_at ? new Date(dbg.started_at).toLocaleTimeString() : "-")}</div></div>
+            <div class="metric"><div class="k">finished_at</div><div class="v" style="font-size:14px;">${esc(dbg.finished_at ? new Date(dbg.finished_at).toLocaleTimeString() : "-")}</div></div>
+          </div>
+          <details class="data" open>
+            <summary>阶段耗时</summary>
+            <table>
+              <thead><tr><th>阶段</th><th>耗时(ms)</th></tr></thead>
+              <tbody>${stageRows}</tbody>
+            </table>
+          </details>
+          <details class="data" open>
+            <summary>异常日志</summary>
+            <table>
+              <thead><tr><th>组件</th><th>信息</th></tr></thead>
+              <tbody>${errorRows}</tbody>
+            </table>
+          </details>
+        `;
+        return;
+      }
+
       const rows = [];
       for (const module of activeModules) {
         const item = getModuleResult(module);
@@ -1725,6 +2581,7 @@
       `).join("") || `<tr><td colspan="5" class="muted">暂无模块调试数据</td></tr>`;
 
       pane.innerHTML = `
+        <div class="muted" style="margin-bottom:8px;">当前调试上下文：${esc(context.label)}。切到某个模块页签后，再打开这里会显示对应模块的调试信息。</div>
         <table>
           <thead><tr><th>模块</th><th>总耗时(ms)</th><th>协议解析(ms)</th><th>攻击检测(ms)</th><th>异常数</th></tr></thead>
           <tbody>${body}</tbody>
@@ -1734,10 +2591,24 @@
 
     function renderRawPane() {
       const pane = document.getElementById("pane-raw");
-      const payload = {
-        status: latestStatus,
-        results: latestResults,
-      };
+      const context = getInspectContext();
+      const payload = context.kind === "module"
+        ? {
+            context: {
+              kind: context.kind,
+              label: context.label,
+              module: context.module,
+            },
+            result: getModuleResult(context.module),
+          }
+        : {
+            context: {
+              kind: context.kind,
+              label: context.label,
+            },
+            status: latestStatus,
+            results: latestResults,
+          };
       pane.innerHTML = `<pre class="raw">${esc(JSON.stringify(payload, null, 2))}</pre>`;
     }
 
@@ -1767,6 +2638,14 @@
     }
 
     function renderProtocolPane(pane, module, result) {
+      if (module.name === "HTTP") {
+        renderHTTPPane(pane, module, result);
+        return;
+      }
+      if (module.name === "DNS") {
+        renderDNSPane(pane, module, result);
+        return;
+      }
       const detail = result.detail || {};
       const topKeys = Object.keys(detail).filter((k) => k.startsWith("top_"));
       const recordKey = ["requests", "queries", "sessions", "operations", "records"].find((k) => Array.isArray(detail[k]));
@@ -1806,14 +2685,738 @@
       pane.innerHTML = html;
     }
 
+    function renderHTTPPane(pane, module, result) {
+      const detail = result.detail || {};
+      const requests = Array.isArray(detail.requests) ? detail.requests : [];
+      const requestCount = Number(detail.request_count || 0);
+      const requestsCoverAll = requestCount > 0 && requests.length >= requestCount;
+      const topStatusCodes = Array.isArray(detail.top_status_codes) ? detail.top_status_codes : [];
+      const topStatusCodesTotal = Number(detail.top_status_codes_total || topStatusCodes.length || 0);
+      const sitePages = Array.isArray(detail.site_pages) ? detail.site_pages : [];
+      const sitePagesTotal = Number(detail.site_pages_total || sitePages.length || 0);
+      const sitePagesExported = Number(
+        detail.site_pages_exported || sitePages.filter((item) => String(item?.url || "").trim()).length || 0
+      );
+      const siteHostsTotal = Number(detail.site_hosts_total || 0);
+      const normalizeHttpUriPath = (value) => {
+        const text = String(value || "").trim();
+        if (!text) return "";
+        try {
+          const parsed = new URL(text);
+          const path = String(parsed.pathname || "").trim();
+          if (path) return path;
+          if (String(parsed.protocol || "").trim() && String(parsed.host || "").trim()) {
+            return "/";
+          }
+        } catch (err) {
+          return text.split("?", 1)[0].split("#", 1)[0].trim();
+        }
+        return text.split("?", 1)[0].split("#", 1)[0].trim();
+      };
+      const rebuildHttpRanking = (kind) => {
+        const counter = new Map();
+        for (const row of requests) {
+          if (String(row?.direction || "") !== "request") continue;
+          const rawValue = kind === "host" ? String(row?.host || "").trim() : normalizeHttpUriPath(row?.uri);
+          if (!rawValue) continue;
+          counter.set(rawValue, (counter.get(rawValue) || 0) + 1);
+        }
+        return [...counter.entries()].sort((left, right) => {
+          if (right[1] !== left[1]) return right[1] - left[1];
+          return String(left[0]).localeCompare(String(right[0]));
+        });
+      };
+      let topHosts = Array.isArray(detail.top_hosts) ? detail.top_hosts : [];
+      let topPaths = Array.isArray(detail.top_paths) ? detail.top_paths : [];
+      let topHostsTotal = Number(detail.top_hosts_total || topHosts.length || 0);
+      let topPathsTotal = Number(detail.top_paths_total || topPaths.length || 0);
+      if (requestsCoverAll && topHostsTotal > topHosts.length) {
+        topHosts = rebuildHttpRanking("host");
+        topHostsTotal = topHosts.length;
+      }
+      if (requestsCoverAll && topPathsTotal > topPaths.length) {
+        topPaths = rebuildHttpRanking("path");
+        topPathsTotal = topPaths.length;
+      }
+      const state = getPaneUiState(`protocol:${module.name}`, {
+        hostLimit: "20",
+        pathLimit: "20",
+        direction: "__all__",
+        method: "__all__",
+        contentType: "__all__",
+        keyword: "",
+      });
+      const buildLimitOptions = (rowCount) => {
+        const base = [10, 20, 30, 50, 100];
+        const count = Math.max(0, Number(rowCount || 0));
+        const options = [];
+        for (const value of base) {
+          if (value < count) {
+            options.push({ value: String(value), label: String(value) });
+          }
+        }
+        if (count > 0) {
+          options.push({ value: String(count), label: String(count) });
+        }
+        options.push({ value: "__all__", label: "全部" });
+        return options;
+      };
+      const hostLimitOptions = buildLimitOptions(topHosts.length);
+      const pathLimitOptions = buildLimitOptions(topPaths.length);
+
+      pane.innerHTML = `
+        <div class="muted" style="margin-bottom:8px;">HTTP 协议解析</div>
+        <details class="data" open>
+          <summary>主机统计</summary>
+          <div style="padding-top:10px;">
+            <div class="ws-filter-row">
+              <label for="http-host-limit">显示条数</label>
+              <select id="http-host-limit">
+                ${hostLimitOptions.map((item) => `<option value="${esc(item.value)}"${item.value === state.hostLimit ? " selected" : ""}>${esc(item.label)}</option>`).join("")}
+              </select>
+            </div>
+            <div data-role="http-hosts-content" style="padding-top:10px;"></div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>路径统计</summary>
+          <div style="padding-top:10px;">
+            <div class="ws-filter-row">
+              <label for="http-path-limit">显示条数</label>
+              <select id="http-path-limit">
+                ${pathLimitOptions.map((item) => `<option value="${esc(item.value)}"${item.value === state.pathLimit ? " selected" : ""}>${esc(item.label)}</option>`).join("")}
+              </select>
+            </div>
+            <div data-role="http-paths-content" style="padding-top:10px;"></div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>响应码统计</summary>
+          <div style="padding-top:10px;">
+            <div data-role="http-status-content"></div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>网站重建</summary>
+          <div style="padding-top:10px;">
+            <div data-role="http-site-content"></div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>筛选</summary>
+          <div style="padding-top:10px;">
+            <div class="http-filter-grid">
+              <div class="http-filter-field">
+                <label for="http-filter-direction">方向</label>
+                <select id="http-filter-direction">
+                  <option value="__all__">全部</option>
+                </select>
+              </div>
+              <div class="http-filter-field">
+                <label for="http-filter-method">方法</label>
+                <select id="http-filter-method">
+                  <option value="__all__">全部</option>
+                </select>
+              </div>
+              <div class="http-filter-field">
+                <label for="http-filter-ctype">内容类型</label>
+                <select id="http-filter-ctype">
+                  <option value="__all__">全部</option>
+                </select>
+              </div>
+              <div class="http-filter-field">
+                <label for="http-filter-keyword">关键字</label>
+                <input id="http-filter-keyword" type="text" placeholder="uri / host / payload">
+              </div>
+            </div>
+            <div data-role="http-filter-content"></div>
+          </div>
+        </details>
+      `;
+
+      const hostLimitSelect = pane.querySelector("#http-host-limit");
+      const pathLimitSelect = pane.querySelector("#http-path-limit");
+      const hostsContent = pane.querySelector('[data-role="http-hosts-content"]');
+      const pathsContent = pane.querySelector('[data-role="http-paths-content"]');
+      const statusContent = pane.querySelector('[data-role="http-status-content"]');
+      const siteContent = pane.querySelector('[data-role="http-site-content"]');
+      const filterDirection = pane.querySelector("#http-filter-direction");
+      const filterMethod = pane.querySelector("#http-filter-method");
+      const filterCtype = pane.querySelector("#http-filter-ctype");
+      const filterKeyword = pane.querySelector("#http-filter-keyword");
+      const filterContent = pane.querySelector('[data-role="http-filter-content"]');
+
+      const appendOptions = (select, values) => {
+        const options = Array.from(new Set(values.filter((item) => String(item || "").trim()))).sort();
+        for (const value of options) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          select.appendChild(option);
+        }
+      };
+
+      appendOptions(filterDirection, requests.map((item) => item.direction));
+      appendOptions(filterMethod, requests.map((item) => item.method));
+      appendOptions(filterCtype, requests.map((item) => item.content_type));
+
+      if (filterDirection) filterDirection.value = state.direction;
+      if (filterMethod) filterMethod.value = state.method;
+      if (filterCtype) filterCtype.value = state.contentType;
+      if (filterKeyword) filterKeyword.value = state.keyword;
+
+      const defaultLimitValue = (options) => options.find((item) => item.value !== "__all__")?.value || "__all__";
+      const normalizeLimitValue = (select, options, fallback) => {
+        const raw = String(select?.value || fallback);
+        const validFallback = options.some((item) => item.value === fallback) ? fallback : defaultLimitValue(options);
+        const valid = options.some((item) => item.value === raw) ? raw : validFallback;
+        if (select) {
+          select.value = valid;
+        }
+        return valid;
+      };
+
+      if (hostLimitSelect) {
+        state.hostLimit = normalizeLimitValue(hostLimitSelect, hostLimitOptions, state.hostLimit || defaultLimitValue(hostLimitOptions));
+      }
+      if (pathLimitSelect) {
+        state.pathLimit = normalizeLimitValue(pathLimitSelect, pathLimitOptions, state.pathLimit || defaultLimitValue(pathLimitOptions));
+      }
+
+      const renderRankingTable = (container, rows, totalCount, limitValue, emptyText = "无数据") => {
+        const normalizedLimit = String(limitValue || "20");
+        const limitNumber = normalizedLimit === "__all__" ? rows.length : Math.max(0, Number.parseInt(normalizedLimit, 10) || 0);
+        const visibleRows = normalizedLimit === "__all__" ? rows : rows.slice(0, limitNumber);
+        const selectedLabel = normalizedLimit === "__all__" ? "全部" : String(limitNumber);
+
+        container.innerHTML = `
+          <div class="http-filter-count">当前展示 ${esc(String(visibleRows.length))} 条 / 共 ${esc(String(totalCount || rows.length || 0))} 条，选择上限 ${esc(String(selectedLabel))}</div>
+          <div class="scroll-box">
+            <table>
+              <thead><tr><th>value</th><th>count</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        `;
+
+        const tbody = container.querySelector("tbody");
+        if (!tbody) return;
+        if (!visibleRows.length) {
+          tbody.innerHTML = `<tr><td colspan="2" class="muted">${esc(emptyText)}</td></tr>`;
+          return;
+        }
+        for (const item of visibleRows) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${esc(item[0])}</td><td>${esc(item[1])}</td>`;
+          tbody.appendChild(tr);
+        }
+      };
+
+      const safeDecodeUriPart = (value) => {
+        const text = String(value || "");
+        if (!text) return "";
+        try {
+          return decodeURIComponent(text);
+        } catch (err) {
+          return text;
+        }
+      };
+
+      const preferSitePage = (current, next) => {
+        if (!current) return next;
+        if (!next) return current;
+        const currentHasUrl = Boolean(String(current.url || "").trim());
+        const nextHasUrl = Boolean(String(next.url || "").trim());
+        if (currentHasUrl !== nextHasUrl) {
+          return nextHasUrl ? next : current;
+        }
+        const currentPacket = Number(current.response_packet_index ?? -1);
+        const nextPacket = Number(next.response_packet_index ?? -1);
+        return nextPacket >= currentPacket ? next : current;
+      };
+
+      const buildSiteGroups = (rows) => {
+        const groups = new Map();
+        for (const row of rows) {
+          const serverIp = String(row?.server_ip || "").trim() || "unknown_server";
+          const host = String(row?.host || "").trim();
+          const uriPath = normalizeHttpUriPath(row?.uri_path || row?.uri || "/") || "/";
+          let group = groups.get(serverIp);
+          if (!group) {
+            group = {
+              serverIp,
+              hosts: new Set(),
+              pageCount: 0,
+              root: { label: "/", page: null, children: new Map() },
+            };
+            groups.set(serverIp, group);
+          }
+          if (host) {
+            group.hosts.add(host);
+          }
+          group.pageCount += 1;
+
+          const segments = uriPath === "/"
+            ? []
+            : uriPath.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean).map(safeDecodeUriPart);
+          if (!segments.length) {
+            group.root.page = preferSitePage(group.root.page, row);
+            continue;
+          }
+
+          let node = group.root;
+          for (const segment of segments) {
+            let child = node.children.get(segment);
+            if (!child) {
+              child = { label: segment, page: null, children: new Map() };
+              node.children.set(segment, child);
+            }
+            node = child;
+          }
+          node.page = preferSitePage(node.page, row);
+        }
+        return [...groups.values()].sort((left, right) => String(left.serverIp).localeCompare(String(right.serverIp)));
+      };
+
+      const renderSiteLabel = (row, label) => {
+        const meta = [];
+        if (row?.host) meta.push(`host=${row.host}`);
+        if (row?.content_type) meta.push(String(row.content_type));
+        if (row?.response_packet_index != null) meta.push(`resp=${row.response_packet_index}`);
+        const targetUrl = String(row?.viewer_url || row?.url || "").trim();
+        const labelHtml = targetUrl
+          ? `<a href="${esc(targetUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${esc(label)}</a>`
+          : `<span>${esc(label)}</span>`;
+        return `${labelHtml}${meta.length ? `<span class="http-site-meta">${esc(meta.join(" | "))}</span>` : ""}`;
+      };
+
+      const renderSiteNode = (node) => {
+        const children = [...node.children.values()]
+          .sort((left, right) => String(left.label).localeCompare(String(right.label)))
+          .map((child) => renderSiteNode(child))
+          .join("");
+        const labelHtml = node.page
+          ? renderSiteLabel(node.page, node.label)
+          : `<span>${esc(node.label)}</span>`;
+
+        if (!children) {
+          return `<div class="http-site-leaf">${labelHtml}</div>`;
+        }
+
+        return `
+          <details class="http-site-node" open>
+            <summary>${labelHtml}</summary>
+            <div class="http-site-branch">${children}</div>
+          </details>
+        `;
+      };
+
+      const renderSitePages = () => {
+        if (!siteContent) return;
+        const groups = buildSiteGroups(sitePages);
+        if (!groups.length) {
+          siteContent.innerHTML = `<div class="overview-empty">当前没有命中 GET + 200 的可重建站点资源。</div>`;
+          return;
+        }
+
+        const cards = groups.map((group) => {
+          const hosts = [...group.hosts].sort().join(", ");
+          const rootLeaf = group.root.page
+            ? `<div class="http-site-leaf">${renderSiteLabel(group.root.page, "/")}</div>`
+            : "";
+          const nodes = [...group.root.children.values()]
+            .sort((left, right) => String(left.label).localeCompare(String(right.label)))
+            .map((child) => renderSiteNode(child))
+            .join("");
+          return `
+            <div class="http-site-group">
+              <div class="ws-command-meta">server_ip=${esc(group.serverIp)}${hosts ? ` | hosts=${esc(hosts)}` : ""} | pages=${esc(String(group.pageCount))}</div>
+              <div class="http-site-tree">
+                ${rootLeaf}
+                ${nodes || (!rootLeaf ? `<div class="muted">当前只有根路径资源</div>` : "")}
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        siteContent.innerHTML = `
+          <div class="ws-meta-grid" style="margin-bottom:10px;">
+            <div class="ws-meta-card">
+              <div class="muted">站点资源</div>
+              <div class="ws-meta-body">${esc(String(sitePages.length))} / ${esc(String(sitePagesTotal || sitePages.length || 0))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="muted">已导出页面</div>
+              <div class="ws-meta-body">${esc(String(sitePagesExported))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="muted">目标 IP</div>
+              <div class="ws-meta-body">${esc(String(siteHostsTotal || groups.length))}</div>
+            </div>
+          </div>
+          <div class="http-site-scroll">${cards}</div>
+        `;
+      };
+
+      const renderFilteredRequests = () => {
+        const direction = String(filterDirection?.value || "__all__");
+        const method = String(filterMethod?.value || "__all__");
+        const contentType = String(filterCtype?.value || "__all__");
+        const keyword = String(filterKeyword?.value || "").trim().toLowerCase();
+        state.direction = direction;
+        state.method = method;
+        state.contentType = contentType;
+        state.keyword = String(filterKeyword?.value || "");
+
+        const rows = requests.filter((row) => {
+          if (direction !== "__all__" && String(row.direction || "") !== direction) {
+            return false;
+          }
+          if (method !== "__all__" && String(row.method || "") !== method) {
+            return false;
+          }
+          if (contentType !== "__all__" && String(row.content_type || "") !== contentType) {
+            return false;
+          }
+          if (!keyword) {
+            return true;
+          }
+          const haystack = [
+            row.host,
+            row.uri,
+            row.method,
+            row.status_code,
+            row.content_type,
+            row.payload_preview,
+          ].map((item) => String(item || "").toLowerCase()).join("\n");
+          return haystack.includes(keyword);
+        });
+
+        const visibleRows = rows.slice(0, 120);
+        const body = visibleRows.map((row) => `
+          <tr>
+            <td>${esc(row.packet_index)}</td>
+            <td>${esc(row.direction || "")}</td>
+            <td>${esc(row.method || "")}</td>
+            <td>${esc(row.status_code || "")}</td>
+            <td>${esc(row.uri || "")}</td>
+            <td>${esc(row.content_type || "")}</td>
+            <td>${esc(row.payload_preview || "")}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="7" class="muted">没有匹配结果</td></tr>`;
+
+        filterContent.innerHTML = `
+          <div class="http-filter-count">命中 ${esc(String(rows.length))} 条，当前展示 ${esc(String(visibleRows.length))} 条</div>
+          <div class="scroll-box">
+            <table>
+              <thead>
+                <tr><th>packet</th><th>direction</th><th>method</th><th>status</th><th>uri</th><th>content_type</th><th>payload</th></tr>
+              </thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        `;
+      };
+
+      const bindRankingLimit = (select, stateKey, container, rows, totalCount) => {
+        if (!select || !container) return;
+        const rerender = () => {
+          const options = stateKey === "hostLimit" ? hostLimitOptions : pathLimitOptions;
+          state[stateKey] = normalizeLimitValue(select, options, state[stateKey] || defaultLimitValue(options));
+          renderRankingTable(container, rows, totalCount, state[stateKey]);
+        };
+        select.addEventListener("change", rerender);
+        select.addEventListener("input", rerender);
+      };
+
+      bindRankingLimit(hostLimitSelect, "hostLimit", hostsContent, topHosts, topHostsTotal);
+      bindRankingLimit(pathLimitSelect, "pathLimit", pathsContent, topPaths, topPathsTotal);
+      for (const element of [filterDirection, filterMethod, filterCtype]) {
+        if (element) {
+          element.addEventListener("change", renderFilteredRequests);
+        }
+      }
+      if (filterKeyword) {
+        filterKeyword.addEventListener("input", renderFilteredRequests);
+      }
+
+      if (hostsContent) {
+        renderRankingTable(hostsContent, topHosts, topHostsTotal, state.hostLimit);
+      }
+      if (pathsContent) {
+        renderRankingTable(pathsContent, topPaths, topPathsTotal, state.pathLimit);
+      }
+      if (statusContent) {
+        renderRankingTable(statusContent, topStatusCodes, topStatusCodesTotal, "__all__", "无响应码数据");
+      }
+      renderSitePages();
+      renderFilteredRequests();
+    }
+
+    function renderDNSPane(pane, module, result) {
+      const detail = result.detail || {};
+      const queries = Array.isArray(detail.queries) ? detail.queries : [];
+      const topQueries = Array.isArray(detail.top_queries) ? detail.top_queries : [];
+      const fieldOptions = Array.isArray(detail.field_options) && detail.field_options.length
+        ? detail.field_options
+        : [
+            { value: "query_name", label: "查询域名" },
+            { value: "response", label: "响应值" },
+          ];
+      const analysisRows = Array.isArray(detail.analysis_rows) && detail.analysis_rows.length
+        ? detail.analysis_rows
+        : queries;
+      const suspiciousPatterns = Array.isArray(detail.suspicious_patterns) ? detail.suspicious_patterns : [];
+      const decodedCandidates = Array.isArray(detail.decoded_candidates) ? detail.decoded_candidates : [];
+      const state = getPaneUiState(`protocol:${module.name}`, {
+        field: "query_name",
+        contains: "",
+        delimiter: ".",
+        extractor: "first_label",
+        segmentIndex: "0",
+        joiner: "",
+        decoder: "auto",
+      });
+
+      const topQueryBody = topQueries.length
+        ? topQueries.map((item) => `<tr><td>${esc(item[0])}</td><td>${esc(item[1])}</td></tr>`).join("")
+        : `<tr><td colspan="2" class="muted">无数据</td></tr>`;
+      const patternCards = suspiciousPatterns.length
+        ? suspiciousPatterns.map((item) => `
+            <div class="dns-pattern-card">
+              <div class="dns-pattern-title">${esc(item.field_label || item.field)} / ${esc(item.extractor_label || item.extractor)}</div>
+              <div class="dns-pattern-meta">kind=${esc(item.match_kind || "")}
+ratio=${esc(String(item.match_ratio || 0))}% (${esc(String(item.matched_count || 0))}/${esc(String(item.total_count || 0))})
+joined_preview=${esc(item.joined_preview || "")}
+samples=${esc((item.samples || []).join(", "))}</div>
+            </div>
+          `).join("")
+        : `<div class="overview-empty">当前没有明显的 DNS 藏数模式命中。</div>`;
+      const candidateCards = decodedCandidates.length
+        ? decodedCandidates.map((item) => `
+            <div class="dns-output-card">
+              <div class="dns-pattern-title">${esc(item.title || "候选解码结果")}</div>
+              <div class="dns-pattern-meta">chain=${esc(item.decode_chain || "-")}
+layers=${esc(String(item.decode_layers || 0))}
+joined_length=${esc(String(item.joined_length || 0))}
+joined_preview=${esc(item.joined_preview || "")}</div>
+              <pre>${esc(item.decoded_text || item.decoded_preview || "(空)")}</pre>
+            </div>
+          `).join("")
+        : `<div class="overview-empty">当前没有自动解码结果。</div>`;
+
+      pane.innerHTML = `
+        <div class="muted" style="margin-bottom:8px;">DNS 协议解析</div>
+        <div class="ws-meta-grid" style="margin-bottom:10px;">
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">DNS 事件数</div>
+            <div class="ws-meta-body">${esc(String(detail.query_count || analysisRows.length || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">分析样本数</div>
+            <div class="ws-meta-body">${esc(String(detail.analysis_row_count || analysisRows.length || 0))}${detail.analysis_truncated ? " (已截断)" : ""}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">自动模式命中</div>
+            <div class="ws-meta-body">${esc(String(suspiciousPatterns.length))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">自动候选解码</div>
+            <div class="ws-meta-body">${esc(String(decodedCandidates.length))}</div>
+          </div>
+        </div>
+        <details class="data" open>
+          <summary>高频 DNS 查询</summary>
+          <div style="padding-top:10px;">
+            <div class="scroll-box">
+              <table>
+                <thead><tr><th>query</th><th>count</th></tr></thead>
+                <tbody>${topQueryBody}</tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>DNS 藏数模式分析</summary>
+          <div style="padding-top:10px;">
+            <div class="dns-pattern-grid">${patternCards}</div>
+            <div class="dns-pattern-grid">${candidateCards}</div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>自定义 DNS 解析模板</summary>
+          <div style="padding-top:10px;">
+            <div class="dns-template-grid">
+              <div class="dns-template-field">
+                <label for="dns-template-field">字段</label>
+                <select id="dns-template-field">
+                  ${fieldOptions.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("")}
+                </select>
+              </div>
+              <div class="dns-template-field">
+                <label for="dns-template-contains">包含关键字</label>
+                <input id="dns-template-contains" type="text" placeholder="example.com / flag">
+              </div>
+              <div class="dns-template-field">
+                <label for="dns-template-delimiter">分隔符</label>
+                <input id="dns-template-delimiter" type="text" placeholder=".">
+              </div>
+              <div class="dns-template-field">
+                <label for="dns-template-extractor">取值方式</label>
+                <select id="dns-template-extractor">
+                  <option value="full_value">完整字段</option>
+                  <option value="first_label">第 1 段</option>
+                  <option value="last_label">最后 1 段</option>
+                  <option value="nth_label">第 N 段</option>
+                  <option value="joined_labels">去掉分隔符后拼接</option>
+                </select>
+              </div>
+              <div class="dns-template-field">
+                <label for="dns-template-index">段序号</label>
+                <input id="dns-template-index" type="number" min="0" step="1" placeholder="0">
+              </div>
+              <div class="dns-template-field">
+                <label for="dns-template-joiner">拼接符</label>
+                <input id="dns-template-joiner" type="text" placeholder="默认直接拼接">
+              </div>
+              <div class="dns-template-field">
+                <label for="dns-template-decoder">解码方式</label>
+                <select id="dns-template-decoder">
+                  <option value="none">不解码</option>
+                  <option value="auto">自动链式</option>
+                  <option value="hex">先按 hex 解码</option>
+                  <option value="base64">先按 base64 解码</option>
+                </select>
+              </div>
+            </div>
+            <div data-role="dns-template-output"></div>
+          </div>
+        </details>
+      `;
+
+      const fieldSelect = pane.querySelector("#dns-template-field");
+      const containsInput = pane.querySelector("#dns-template-contains");
+      const delimiterInput = pane.querySelector("#dns-template-delimiter");
+      const extractorSelect = pane.querySelector("#dns-template-extractor");
+      const indexInput = pane.querySelector("#dns-template-index");
+      const joinerInput = pane.querySelector("#dns-template-joiner");
+      const decoderSelect = pane.querySelector("#dns-template-decoder");
+      const output = pane.querySelector('[data-role="dns-template-output"]');
+
+      if (fieldSelect) fieldSelect.value = state.field;
+      if (containsInput) containsInput.value = state.contains;
+      if (delimiterInput) delimiterInput.value = state.delimiter;
+      if (extractorSelect) extractorSelect.value = state.extractor;
+      if (indexInput) indexInput.value = state.segmentIndex;
+      if (joinerInput) joinerInput.value = state.joiner;
+      if (decoderSelect) decoderSelect.value = state.decoder;
+
+      const renderDnsTemplate = () => {
+        state.field = String(fieldSelect?.value || "query_name");
+        state.contains = String(containsInput?.value || "");
+        state.delimiter = String(delimiterInput?.value || ".");
+        state.extractor = String(extractorSelect?.value || "first_label");
+        state.segmentIndex = String(indexInput?.value || "0");
+        state.joiner = String(joinerInput?.value || "");
+        state.decoder = String(decoderSelect?.value || "auto");
+
+        if (indexInput) {
+          indexInput.disabled = state.extractor !== "nth_label";
+        }
+
+        const contains = state.contains.trim().toLowerCase();
+        const filteredRows = analysisRows.filter((row) => {
+          const value = String(row?.[state.field] || "");
+          if (!contains) return true;
+          return value.toLowerCase().includes(contains);
+        });
+        const extracted = filteredRows
+          .map((row) => extractDnsTemplateValue(row?.[state.field], state.extractor, state.delimiter, state.segmentIndex))
+          .filter((item) => String(item || "").trim());
+        const joined = extracted.join(state.joiner);
+        const decoded = state.decoder === "none"
+          ? { text: joined, chain: [] }
+          : decodeDnsChain(joined, state.decoder);
+
+        output.innerHTML = `
+          <div class="http-filter-count">命中 ${esc(String(filteredRows.length))} 条，提取 ${esc(String(extracted.length))} 条，拼接长度 ${esc(String(joined.length))}</div>
+          <div class="ws-meta-grid">
+            <div class="dns-output-card">
+              <div class="ws-meta-label">提取样本</div>
+              <pre>${esc(extracted.slice(0, 20).join("\n") || "(空)")}</pre>
+            </div>
+            <div class="dns-output-card">
+              <div class="ws-meta-label">拼接结果</div>
+              <pre>${esc(joined || "(空)")}</pre>
+            </div>
+          </div>
+          <div class="dns-output-card" style="margin-top:10px;">
+            <div class="ws-meta-label">尝试解码结果${decoded.chain.length ? ` (${esc(decoded.chain.join(" -> "))})` : ""}</div>
+            <pre>${esc(decoded.text || "(空)")}</pre>
+          </div>
+        `;
+      };
+
+      for (const element of [fieldSelect, extractorSelect, decoderSelect]) {
+        if (element) {
+          element.addEventListener("change", renderDnsTemplate);
+        }
+      }
+      for (const element of [containsInput, delimiterInput, indexInput, joinerInput]) {
+        if (element) {
+          element.addEventListener("input", renderDnsTemplate);
+        }
+      }
+
+      renderDnsTemplate();
+    }
+
     function renderAttackPane(pane, module, result) {
+      const detail = result.detail || {};
+      if (module.name === "WebShellDetector") {
+        renderWebShellPane(pane, result);
+        return;
+      }
+      const topKeys = Object.keys(detail).filter((k) => k.startsWith("top_"));
+      const recordKey = ["records"].find((k) => Array.isArray(detail[k]));
       const alerts = result.alerts || [];
       const expectedRule = ruleMap[module.name];
       const filtered = expectedRule ? alerts.filter((a) => a.rule_id === expectedRule) : alerts;
-      if (!filtered.length) {
+      if (!filtered.length && !recordKey) {
         pane.innerHTML = `<div class="muted">模块 ${esc(module.name)} 未命中告警。</div>`;
         return;
       }
+
+      let html = "";
+      for (const topKey of topKeys) {
+        const rows = detail[topKey] || [];
+        const body = rows.map((item) => `<tr><td>${esc(item[0])}</td><td>${item[1]}</td></tr>`).join("")
+          || `<tr><td colspan="2" class="muted">无数据</td></tr>`;
+        html += `
+          <details class="data" open>
+            <summary>${esc(topKey)}</summary>
+            <table><thead><tr><th>value</th><th>count</th></tr></thead><tbody>${body}</tbody></table>
+          </details>
+        `;
+      }
+
+      if (recordKey) {
+        const rows = detail[recordKey] || [];
+        if (rows.length) {
+          const cols = Array.from(rows.reduce((set, row) => {
+            Object.keys(row).forEach((k) => set.add(k));
+            return set;
+          }, new Set()));
+          const body = rows.map((row) => `<tr>${cols.map((c) => `<td>${esc(row[c])}</td>`).join("")}</tr>`).join("");
+          html += `
+            <details class="data" open>
+              <summary>${esc(recordKey)} (${rows.length})</summary>
+              <table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
+            </details>
+          `;
+        }
+      }
+
       const body = filtered.map((alert) => `
         <tr>
           <td>${esc(alert.rule_id)}</td>
@@ -1822,12 +3425,447 @@
           <td><pre style="margin:0;white-space:pre-wrap;font-size:11px;">${esc(JSON.stringify(alert.evidence || {}, null, 2))}</pre></td>
         </tr>
       `).join("");
-      pane.innerHTML = `
+
+      html += `
         <table>
           <thead><tr><th>规则ID</th><th>等级</th><th>描述</th><th>证据</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       `;
+      pane.innerHTML = html;
+    }
+
+    function renderWebShellPane(pane, result) {
+      const detail = result.detail || {};
+      const rows = Array.isArray(detail.records) ? detail.records : [];
+      const detected = Array.isArray(detail.detected_webshells) ? detail.detected_webshells : [];
+      const state = getPaneUiState("attack:WebShellDetector", {
+        selectedFamily: "",
+        godzillaKeyText: "",
+        godzillaKeyFile: null,
+        godzillaKeyFileName: "",
+        godzillaLoading: false,
+        godzillaError: "",
+        godzillaResult: null,
+      });
+      const defaultOptions = [
+        { value: "china_chopper_like", label: "中国菜刀类 PHP WebShell" },
+        { value: "cookie_exec_like", label: "Cookie 命令执行类 PHP WebShell" },
+        { value: "godzilla_like", label: "哥斯拉类 PHP WebShell" },
+      ];
+      const familyOptions = Array.isArray(detail.supported_family_options) && detail.supported_family_options.length
+        ? detail.supported_family_options
+        : defaultOptions;
+      const supported = Array.isArray(detail.supported_webshell_types) && detail.supported_webshell_types.length
+        ? detail.supported_webshell_types
+        : familyOptions.map((item) => item.label);
+
+      const section = (title, items, emptyText = "无数据") => {
+        const body = (Array.isArray(items) && items.length)
+          ? items.map((item) => `<pre class="ws-pre-block">${esc(item)}</pre>`).join("")
+          : `<div class="muted">${esc(emptyText)}</div>`;
+        return `
+          <details class="data" open>
+            <summary>${esc(title)}</summary>
+            <div style="padding-top:10px;">${body}</div>
+          </details>
+        `;
+      };
+
+      const uniqueTexts = (values) => {
+        const seen = new Set();
+        const items = [];
+        for (const value of values || []) {
+          const text = String(value || "").trim();
+          if (!text || seen.has(text)) {
+            continue;
+          }
+          seen.add(text);
+          items.push(text);
+        }
+        return items;
+      };
+
+      const commandSection = (title, records, emptyText = "无数据") => {
+        const renderCommandItem = (row) => {
+          const packetParts = [];
+          if (row.packet_index != null) {
+            packetParts.push(`packet=${row.packet_index}`);
+          }
+          if (row.response_packet_index != null) {
+            packetParts.push(`response=${row.response_packet_index}`);
+          }
+          if (row.request_packet_index != null) {
+            packetParts.push(`request=${row.request_packet_index}`);
+          }
+          const transcript = String(row.interaction_command || "").trim();
+          const exports = Array.isArray(row.exported_artifacts) ? row.exported_artifacts : [];
+          const links = exports.map((item) => {
+            const url = String(item.url || "").trim();
+            const viewerUrl = String(item.viewer_url || "").trim();
+            if (!url && !viewerUrl) return "";
+            const name = String(item.name || viewerUrl || url).trim();
+            const parts = [];
+            if (viewerUrl) {
+              parts.push(`view=<a href="${esc(viewerUrl)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a>`);
+            }
+            if (url) {
+              parts.push(`raw=<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a>`);
+            }
+            return `<div>${parts.join(" | ")}</div>`;
+          }).filter(Boolean).join("");
+          return `
+            <div class="ws-command">
+              <div class="ws-command-meta">${esc(packetParts.join(", ") || "packet=?")}</div>
+              <pre>${esc(transcript || "(空)")}</pre>
+              ${links ? `<div class="ws-command-links">${links}</div>` : ""}
+            </div>
+          `;
+        };
+        const body = (Array.isArray(records) && records.length)
+          ? records.map(renderCommandItem).join("")
+          : `<div class="muted">${esc(emptyText)}</div>`;
+        return `
+          <details class="data" open>
+            <summary>${esc(title)}</summary>
+            <div style="padding-top:10px;">${body}</div>
+          </details>
+        `;
+      };
+
+      const logSection = (title, items, emptyText = "无数据") => {
+        const renderLogItem = (item) => {
+          const lines = String(item || "").split("\n").map((line) => {
+            if (line.startsWith("export_url=")) {
+              const url = line.slice("export_url=".length).trim();
+              return `export_url=<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`;
+            }
+            return esc(line);
+          }).join("\n");
+          return `<pre class="ws-pre-block">${lines}</pre>`;
+        };
+        const body = (Array.isArray(items) && items.length)
+          ? items.map(renderLogItem).join("")
+          : `<div class="muted">${esc(emptyText)}</div>`;
+        return `
+          <details class="data" open>
+            <summary>${esc(title)}</summary>
+            <div style="padding-top:10px;">${body}</div>
+          </details>
+        `;
+      };
+
+      const parserOptions = [
+        { value: "__all__", label: "全部已命中类型" },
+        ...familyOptions,
+      ];
+      const preferredSelected = detected.length === 1
+        ? (rows.find((item) => item.possible_webshell === detected[0]) || {}).family_variant || "__all__"
+        : "__all__";
+      const initialSelected = parserOptions.some((item) => item.value === state.selectedFamily)
+        ? state.selectedFamily
+        : preferredSelected;
+      const optionLabelMap = Object.fromEntries(parserOptions.map((item) => [String(item.value), String(item.label)]));
+      state.selectedFamily = initialSelected;
+
+      const renderGodzillaKvItem = (key, value) => `
+        <div class="item">
+          <div class="k">${esc(key)}</div>
+          <div class="v">${esc(value || "-")}</div>
+        </div>
+      `;
+
+      const renderNestedAnalysis = (title, analysis) => {
+        if (!analysis || !analysis.label) {
+          return "";
+        }
+        const lines = [String(analysis.label || "").trim(), String(analysis.summary || "").trim()]
+          .filter(Boolean)
+          .join("\n");
+        if (!lines) {
+          return "";
+        }
+        return `
+          <div class="ws-godzilla-section-title">${esc(title)}</div>
+          <pre>${esc(lines)}</pre>
+        `;
+      };
+
+      const godzillaSourceLabel = (mode) => ({
+        upload_file: "上传文件",
+        path_file: "输入路径文件",
+        inline_lines: "输入多行候选",
+        single_key: "单个密钥",
+        empty: "空输入",
+      }[String(mode || "")] || "未知来源");
+
+      const godzillaFileMetaText = () => (
+        state.godzillaKeyFileName
+          ? `当前已选择字典文件: ${state.godzillaKeyFileName}`
+          : "也可以直接上传密钥字典文件，系统会按行逐个尝试。"
+      );
+
+      const renderGodzillaResult = () => {
+        if (state.godzillaLoading) {
+          return `<div class="ws-godzilla-meta">正在尝试哥斯拉密钥解析...</div>`;
+        }
+        if (state.godzillaError) {
+          return `<div class="ws-godzilla-meta" style="color:#fca5a5;">${esc(state.godzillaError)}</div>`;
+        }
+        const payload = state.godzillaResult;
+        if (!payload) {
+          return `<div class="ws-godzilla-meta">支持输入单个密钥，也支持输入本地文件路径或上传字典文件按行尝试。</div>`;
+        }
+
+        const sourceMeta = payload.candidate_source || {};
+        const matchedContext = payload.matched_context || {};
+        const contexts = Array.isArray(payload.contexts) ? payload.contexts : [];
+        const statusText = !payload.matched
+          ? "未找到可用密钥"
+          : payload.exact_match
+            ? "marker 精确匹配并完成解析"
+            : "已按当前密钥尝试解析（未精确命中 marker）";
+        const sourceText = [
+          godzillaSourceLabel(sourceMeta.mode),
+          sourceMeta.label ? String(sourceMeta.label) : "",
+        ].filter(Boolean).join("\n");
+
+        const contextHtml = contexts.length
+          ? contexts.map((context, contextIndex) => {
+              const entries = Array.isArray(context.entries) ? context.entries : [];
+              const entryHtml = entries.length
+                ? entries.map((entry, entryIndex) => {
+                    const titleParts = [];
+                    if (entry.request_packet_index != null) {
+                      titleParts.push(`request=${entry.request_packet_index}`);
+                    }
+                    if (entry.response_packet_index != null) {
+                      titleParts.push(`response=${entry.response_packet_index}`);
+                    }
+                    if (entry.request?.summary) {
+                      titleParts.push(`req:${entry.request.summary}`);
+                    }
+                    if (entry.response?.summary) {
+                      titleParts.push(`resp:${entry.response.summary}`);
+                    }
+                    const requestText = String(entry.request?.text || entry.request?.preview || "").trim() || "(空)";
+                    const responseText = String(entry.response?.text || entry.response?.preview || "").trim() || "(空)";
+                    return `
+                      <div class="ws-godzilla-entry">
+                        <div class="ws-godzilla-entry-title">${esc(titleParts.join(" | ") || `entry=${entryIndex + 1}`)}</div>
+                        ${renderNestedAnalysis("请求二次识别", entry.request?.nested_analysis)}
+                        <div class="ws-godzilla-section-title">请求内容</div>
+                        <pre>${esc(requestText)}</pre>
+                        ${renderNestedAnalysis("响应二次识别", entry.response?.nested_analysis)}
+                        <div class="ws-godzilla-section-title">响应内容</div>
+                        <pre>${esc(responseText)}</pre>
+                      </div>
+                    `;
+                  }).join("")
+                : `<div class="muted">当前上下文没有可展示的解密条目。</div>`;
+
+              return `
+                <div class="ws-godzilla-result">
+                  <div class="ws-godzilla-kv">
+                    ${renderGodzillaKvItem("URI", context.uri || "-")}
+                    ${renderGodzillaKvItem("参数名", context.pass_param || "pass")}
+                    ${renderGodzillaKvItem("左 marker", context.marker_left || "-")}
+                    ${renderGodzillaKvItem("右 marker", context.marker_right || "-")}
+                    ${renderGodzillaKvItem("条目数", String(context.entry_count ?? entries.length ?? 0))}
+                  </div>
+                  ${entryHtml}
+                </div>
+              `;
+            }).join("")
+          : `<div class="ws-godzilla-meta">当前没有可展示的哥斯拉会话上下文。</div>`;
+
+        return `
+          <div class="ws-godzilla-result">
+            <div class="ws-godzilla-kv">
+              ${renderGodzillaKvItem("解析状态", statusText)}
+              ${renderGodzillaKvItem("使用密钥", payload.used_key || "-")}
+              ${renderGodzillaKvItem("候选来源", sourceText || "-")}
+              ${renderGodzillaKvItem("候选数量", String(payload.candidate_count || 0))}
+              ${renderGodzillaKvItem("命中 URI", matchedContext.uri || "-")}
+              ${renderGodzillaKvItem("命中参数", matchedContext.pass_param || "-")}
+            </div>
+          </div>
+          ${contextHtml}
+        `;
+      };
+
+      const renderGodzillaTools = () => `
+        <details class="data" open>
+          <summary>哥斯拉密钥解析</summary>
+          <div class="ws-godzilla-box">
+            <div class="ws-filter-row">
+              <label for="ws-godzilla-key-text">密钥 / 本地文件路径</label>
+              <input
+                id="ws-godzilla-key-text"
+                type="text"
+                value="${esc(state.godzillaKeyText || "")}"
+                placeholder="输入单个密钥，或输入 E:\\keys\\godzilla.txt 这类本地文件路径"
+              >
+            </div>
+            <div class="ws-filter-row">
+              <label for="ws-godzilla-key-file">密钥文件</label>
+              <input id="ws-godzilla-key-file" type="file">
+            </div>
+            <div class="ws-inline-actions">
+              <button type="button" class="ws-primary-btn" data-role="ws-godzilla-submit"${state.godzillaLoading ? " disabled" : ""}>
+                ${state.godzillaLoading ? "解析中..." : "尝试解析"}
+              </button>
+              <div class="ws-godzilla-meta">如果输入内容是本地文件路径，就按行读取尝试；否则直接按单个密钥解析。</div>
+            </div>
+            <div class="ws-godzilla-meta" data-role="ws-godzilla-file-meta">${esc(godzillaFileMetaText())}</div>
+            <div data-role="ws-godzilla-result">${renderGodzillaResult()}</div>
+          </div>
+        </details>
+      `;
+
+      pane.innerHTML = `
+        <div class="muted" style="margin-bottom:8px;">WebShell 检测</div>
+        <details class="data" open>
+          <summary>可能是什么 WebShell</summary>
+          <div style="padding-top:10px;">
+            <div class="ws-meta-grid">
+              <div class="ws-meta-card">
+                <div class="ws-meta-label">当前命中</div>
+                <div class="ws-meta-body">${detected.length ? esc(detected.join("\n")) : "未命中已知家族"}</div>
+              </div>
+              <div class="ws-meta-card">
+                <div class="ws-meta-label">当前支持</div>
+                <div class="ws-meta-body">${supported.length ? esc(supported.join("\n")) : "暂无已注册类型"}</div>
+              </div>
+            </div>
+            <div class="ws-filter-row">
+              <label for="ws-family-select">选择进行解析</label>
+              <select id="ws-family-select">
+                ${parserOptions.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+        </details>
+        <div data-role="ws-pane-content"></div>
+      `;
+
+      const select = pane.querySelector("#ws-family-select");
+      const content = pane.querySelector('[data-role="ws-pane-content"]');
+
+      const renderSelectedFamily = (selectedValue) => {
+        state.selectedFamily = selectedValue;
+        const filteredRows = selectedValue === "__all__"
+          ? rows
+          : rows.filter((item) => String(item.family_variant || "") === selectedValue);
+        const scripts = uniqueTexts(filteredRows.map((item) => item.php_script));
+        const logs = uniqueTexts(filteredRows.map((item) => item.log_output));
+        const familyLabel = optionLabelMap[selectedValue] || "该类型";
+        const hasGodzillaRows = filteredRows.some((item) => String(item.family_variant || "") === "godzilla_like");
+        const emptyText = selectedValue === "__all__"
+          ? "无数据"
+          : `当前结果里没有 ${familyLabel} 命中`;
+        content.innerHTML = `
+          ${hasGodzillaRows ? renderGodzillaTools() : ""}
+          ${commandSection("交互命令", filteredRows, emptyText)}
+          ${section("原 PHP 脚本", scripts, emptyText)}
+          ${logSection("其他日志", logs, emptyText)}
+        `;
+
+        if (!hasGodzillaRows) {
+          return;
+        }
+
+        const keyTextInput = content.querySelector("#ws-godzilla-key-text");
+        const keyFileInput = content.querySelector("#ws-godzilla-key-file");
+        const submitBtn = content.querySelector('[data-role="ws-godzilla-submit"]');
+        const fileMeta = content.querySelector('[data-role="ws-godzilla-file-meta"]');
+
+        if (keyTextInput) {
+          keyTextInput.addEventListener("input", () => {
+            state.godzillaKeyText = String(keyTextInput.value || "");
+            state.godzillaError = "";
+          });
+        }
+
+        if (keyFileInput) {
+          keyFileInput.addEventListener("change", () => {
+            const file = keyFileInput.files && keyFileInput.files[0] ? keyFileInput.files[0] : null;
+            state.godzillaKeyFile = file;
+            state.godzillaKeyFileName = file ? String(file.name || "") : "";
+            state.godzillaError = "";
+            if (fileMeta) {
+              fileMeta.textContent = godzillaFileMetaText();
+            }
+          });
+        }
+
+        if (submitBtn) {
+          submitBtn.addEventListener("click", async () => {
+            if (state.godzillaLoading) {
+              return;
+            }
+            if (!currentJobId) {
+              state.godzillaError = "当前没有可用任务，无法执行哥斯拉密钥解析";
+              state.godzillaResult = null;
+              renderSelectedFamily(state.selectedFamily || "__all__");
+              return;
+            }
+
+            const keyText = String(state.godzillaKeyText || "").trim();
+            if (!keyText && !state.godzillaKeyFile) {
+              state.godzillaError = "请输入密钥、本地文件路径，或选择一个密钥文件";
+              state.godzillaResult = null;
+              renderSelectedFamily(state.selectedFamily || "__all__");
+              return;
+            }
+
+            state.godzillaLoading = true;
+            state.godzillaError = "";
+            renderSelectedFamily(state.selectedFamily || "__all__");
+
+            try {
+              const formData = new FormData();
+              if (keyText) {
+                formData.append("key_text", keyText);
+              }
+              if (state.godzillaKeyFile) {
+                formData.append(
+                  "key_file",
+                  state.godzillaKeyFile,
+                  state.godzillaKeyFile.name || "godzilla_keys.txt"
+                );
+              }
+              const resp = await fetch(`/api/jobs/${currentJobId}/webshell/godzilla/parse`, {
+                method: "POST",
+                body: formData,
+              });
+              const payload = await resp.json();
+              if (!resp.ok || !payload.ok) {
+                throw new Error(payload?.detail || "哥斯拉密钥解析失败");
+              }
+              state.godzillaResult = payload.result || null;
+              state.godzillaError = "";
+              log(`哥斯拉密钥解析完成: candidates=${state.godzillaResult?.candidate_count || 0}`);
+            } catch (err) {
+              state.godzillaResult = null;
+              state.godzillaError = err?.message || String(err);
+              log(`哥斯拉密钥解析失败: ${state.godzillaError}`, "ERROR");
+            } finally {
+              state.godzillaLoading = false;
+              renderSelectedFamily(state.selectedFamily || "__all__");
+            }
+          });
+        }
+      };
+
+      if (select) {
+        select.value = initialSelected;
+        select.addEventListener("change", () => {
+          state.selectedFamily = select.value;
+          renderSelectedFamily(select.value);
+        });
+      }
+      renderSelectedFamily(initialSelected);
     }
 
     async function loadModuleCatalog() {

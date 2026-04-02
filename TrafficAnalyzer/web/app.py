@@ -7,16 +7,21 @@ from pathlib import Path
 import traceback
 
 from fastapi.concurrency import run_in_threadpool
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from TrafficAnalyzer.pipeline import build_default_pipeline_service
+from TrafficAnalyzer.utils.artifact_utils import artifact_raw_url, artifact_viewer_url, normalize_artifact_relative_path
 from TrafficAnalyzer.web.job_manager import HTTPError, JobManager
 
 BASE_DIR = Path(__file__).resolve().parent
+ARTIFACTS_DIR = BASE_DIR.parent.parent / "data" / "webshell_exports"
+ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="TrafficAnalyzer Web UI", version="0.1.0")
+app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
 job_manager = JobManager()
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
@@ -30,7 +35,41 @@ async def index(request: Request):
     )
 
 
-async def _save_upload_temp(pcap_file: UploadFile) -> tuple[str, str]:
+def _resolve_artifact_file(raw_path: str) -> tuple[str, Path]:
+    try:
+        relative_path = normalize_artifact_relative_path(raw_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"无效的导出文件路径: {exc}") from exc
+
+    artifact_path = (ARTIFACTS_DIR / relative_path).resolve()
+    artifacts_root = ARTIFACTS_DIR.resolve()
+    try:
+        artifact_path.relative_to(artifacts_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="导出文件路径越界") from exc
+    if not artifact_path.exists() or not artifact_path.is_file():
+        raise HTTPException(status_code=404, detail="导出文件不存在")
+    return relative_path, artifact_path
+
+
+@app.get("/artifact-view", response_class=HTMLResponse)
+async def artifact_view(request: Request, path: str):
+    relative_path, artifact_path = _resolve_artifact_file(path)
+    return templates.TemplateResponse(
+        request=request,
+        name="artifact_viewer.html",
+        context={
+            "relative_path": relative_path,
+            "artifact_name": artifact_path.name,
+            "artifact_suffix": artifact_path.suffix.lower(),
+            "artifact_size": artifact_path.stat().st_size,
+            "raw_url": artifact_raw_url(relative_path),
+            "viewer_url": artifact_viewer_url(relative_path),
+        },
+    )
+
+
+async def _save_upload_temp(pcap_file: UploadFile) -> tuple[str, str, int]:
     if not pcap_file.filename:
         raise HTTPException(status_code=400, detail="文件名为空")
 
@@ -52,7 +91,7 @@ async def _save_upload_temp(pcap_file: UploadFile) -> tuple[str, str]:
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise HTTPException(status_code=400, detail="上传文件为空")
-    return pcap_file.filename, temp_path
+    return pcap_file.filename, temp_path, total
 
 
 def _normalize_module_selection(values: list[str] | None) -> list[str] | None:
@@ -70,7 +109,7 @@ async def _analyze_upload(
     attacks: list[str] | None = None,
     max_packets: int | None = None,
 ) -> tuple[str, dict]:
-    _, temp_path = await _save_upload_temp(pcap_file)
+    _, temp_path, _ = await _save_upload_temp(pcap_file)
 
     try:
         protocols = _normalize_module_selection(protocols)
@@ -129,16 +168,62 @@ async def list_modules():
     }
 
 
+@app.get("/api/projects")
+async def list_projects():
+    return {
+        "ok": True,
+        "projects": job_manager.list_projects(),
+    }
+
+
+@app.post("/api/projects/{project_id}/load")
+async def load_project(project_id: str):
+    try:
+        return job_manager.load_project(project_id)
+    except HTTPError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str):
+    try:
+        result = job_manager.delete_project(project_id)
+        return {"ok": True, **result}
+    except HTTPError as exc:
+        message = str(exc)
+        code = 404 if "任务不存在" in message else 400
+        raise HTTPException(status_code=code, detail=message) from exc
+
+
+@app.post("/api/projects/cleanup")
+async def cleanup_projects(payload: dict | None = Body(default=None)):
+    try:
+        payload = payload or {}
+        result = job_manager.cleanup_projects(
+            project_ids=payload.get("project_ids"),
+            keep_recent=payload.get("keep_recent"),
+        )
+        return {"ok": True, **result}
+    except HTTPError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/jobs/start")
 async def start_job(
     pcap_file: UploadFile = File(...),
     max_packets: int | None = Form(default=None),
 ):
-    filename, temp_path = await _save_upload_temp(pcap_file)
-    job_id = job_manager.create_job(filename=filename, temp_path=temp_path, max_packets=max_packets)
+    filename, temp_path, source_size_bytes = await _save_upload_temp(pcap_file)
+    job_id = job_manager.create_job(
+        filename=filename,
+        temp_path=temp_path,
+        max_packets=max_packets,
+        source_size_bytes=source_size_bytes,
+    )
     return {
         "ok": True,
         "job_id": job_id,
+        "project_id": job_id,
         "filename": filename,
     }
 
@@ -157,6 +242,29 @@ async def job_results(job_id: str):
         return job_manager.job_results(job_id)
     except HTTPError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/jobs/{job_id}/webshell/godzilla/parse")
+async def parse_godzilla_webshell_key(
+    job_id: str,
+    key_text: str | None = Form(default=None),
+    key_file: UploadFile | None = File(default=None),
+):
+    key_file_name = key_file.filename if key_file and key_file.filename else None
+    key_file_bytes = await key_file.read() if key_file is not None else None
+    try:
+        result = await run_in_threadpool(
+            job_manager.parse_webshell_godzilla_key,
+            job_id,
+            key_text=key_text,
+            key_file_name=key_file_name,
+            key_file_bytes=key_file_bytes,
+        )
+        return {"ok": True, "result": result}
+    except HTTPError as exc:
+        message = str(exc)
+        code = 404 if "任务不存在" in message else 400
+        raise HTTPException(status_code=code, detail=message) from exc
 
 
 @app.post("/api/jobs/{job_id}/modules/add")
@@ -186,6 +294,21 @@ async def remove_job_module(
     except HTTPError as exc:
         message = str(exc)
         code = 404 if "任务不存在" in message else 400
+        raise HTTPException(status_code=code, detail=message) from exc
+
+
+@app.post("/api/jobs/{job_id}/modules/restart")
+async def restart_job_module(
+    job_id: str,
+    module_type: str = Form(...),
+    module_name: str = Form(...),
+):
+    try:
+        module = job_manager.restart_module(job_id=job_id, module_type=module_type, module_name=module_name)
+        return {"ok": True, "module": module}
+    except HTTPError as exc:
+        message = str(exc)
+        code = 404 if "任务不存在" in message or "模块不存在" in message else 400
         raise HTTPException(status_code=code, detail=message) from exc
 
 

@@ -13,6 +13,9 @@ class BaseAttackDetector(ABC):
     def analyze(self, packet: PacketRecord, protocol_events: List[ProtocolEvent]) -> List[AttackAlert]:
         pass
 
+    def set_context(self, source: str = "in-memory") -> None:
+        return None
+
     def finalize(self) -> List[AttackAlert]:
         return []
 

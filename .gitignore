@@ -14,3 +14,6 @@ traffic_data.db
 # Large local capture files
 tests/Data.pcap
 
+# Local runtime artifacts
+data/projects/
+data/webshell_exports/

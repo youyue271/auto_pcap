@@ -14,19 +14,12 @@ PROTOCOL_PARSER_PATHS = (
 )
 
 ATTACK_DETECTOR_PATHS = (
-    "TrafficAnalyzer.attacks.port_scan_detector.PortScanDetector",
-    "TrafficAnalyzer.attacks.sql_injection_detector.SQLInjectionDetector",
-    "TrafficAnalyzer.attacks.behinder_detector.BehinderDetector",
+    "TrafficAnalyzer.attacks.webshell_detector.WebShellDetector",
 )
 
 # Detector configurations keyed by current detector class name.
 DETECTOR_CONFIGS = {
-    "PortScanDetector": {
-        "threshold": 10,
-        "time_window": 5.0,
-    },
-    "SQLInjectionDetector": {},
-    "BehinderDetector": {},
+    "WebShellDetector": {},
 }
 
 # Backward-compatible alias for earlier naming in the project.

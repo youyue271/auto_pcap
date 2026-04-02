@@ -17,10 +17,15 @@ class HTTPProtocolParser(BaseProtocolParser):
             "http.request.uri",
             "http.request.full_uri",
             "http.user_agent",
+            "http.cookie",
+            "http.set_cookie",
             "http.content_type",
             "http.response.code",
             "http.file_data",
             "http.request.line",
+            "http.request_in",
+            "http.response_in",
+            "tcp.stream",
         ]
 
     def match(self, packet: PacketRecord) -> bool:
@@ -33,9 +38,14 @@ class HTTPProtocolParser(BaseProtocolParser):
             "host": http.get("host"),
             "uri": http.get("request_uri") or http.get("request_full_uri"),
             "user_agent": http.get("user_agent"),
+            "cookie": http.get("cookie"),
+            "set_cookie": http.get("set_cookie"),
             "content_type": http.get("content_type"),
             "status_code": http.get("response_code"),
             "payload": http.get("file_data") or packet.payload_text,
+            "request_in": http.get("request_in"),
+            "response_in": http.get("response_in"),
+            "tcp_stream": packet.raw.get("tcp", {}).get("stream"),
         }
         return ProtocolEvent(
             protocol=self.name,

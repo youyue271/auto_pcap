@@ -1,3 +1,4 @@
+import io
 import json
 from pathlib import Path
 import sqlite3
@@ -10,12 +11,24 @@ from TrafficAnalyzer.attacks import build_attack_detectors
 from TrafficAnalyzer.core.loader import PcapLoader, _parse_capinfos_packet_count
 from TrafficAnalyzer.core.models import PacketRecord
 from TrafficAnalyzer.main import build_parser
+from TrafficAnalyzer.parsers.packet_parser import PacketParser
 from TrafficAnalyzer.protocols import build_protocol_parsers
 from TrafficAnalyzer.runtime import format_runtime_report, runtime_report_dict, validate_runtime
+from TrafficAnalyzer.utils.artifact_utils import artifact_raw_url, artifact_viewer_url, normalize_artifact_relative_path
 from TrafficAnalyzer.web.job_manager import AnalysisJob, JobManager, ModuleExecution, _init_packet_db, _parse_packet_chunk
 
 
 class TestRegistryAndRuntime(unittest.TestCase):
+    def test_artifact_url_helpers_normalize_and_escape_paths(self):
+        self.assertEqual(normalize_artifact_relative_path(r" http_rebuild\demo path\index.php "), "http_rebuild/demo path/index.php")
+        self.assertEqual(artifact_raw_url("http_rebuild/demo path/index.php"), "/artifacts/http_rebuild/demo%20path/index.php")
+        self.assertEqual(
+            artifact_viewer_url("http_rebuild/demo path/index.php"),
+            "/artifact-view?path=http_rebuild/demo%20path/index.php",
+        )
+        with self.assertRaises(ValueError):
+            normalize_artifact_relative_path("../etc/passwd")
+
     def test_parse_capinfos_packet_count(self):
         self.assertEqual(_parse_capinfos_packet_count("tests/file.pcapng\t7106"), 7106)
         self.assertEqual(_parse_capinfos_packet_count("7106"), 7106)
@@ -69,15 +82,239 @@ class TestRegistryAndRuntime(unittest.TestCase):
             self.assertEqual([row["index"] for row in rows], [0, 1, 2])
             self.assertEqual(rows[2]["src_ip"], "10.0.0.2")
 
+    @patch("TrafficAnalyzer.parsers.packet_parser.shutil.which", return_value="/usr/bin/tshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.PacketParser._parse_file_pyshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.subprocess.Popen")
+    def test_fast_parser_fallback_discards_partial_tshark_output(self, mock_popen, mock_pyshark, _mock_which):
+        class FakeProcess:
+            def __init__(self, stdout_text: str, stderr_text: str, retcode: int):
+                self.stdout = io.StringIO(stdout_text)
+                self.stderr = io.StringIO(stderr_text)
+                self._retcode = retcode
+
+            def wait(self, timeout=None):
+                return self._retcode
+
+        partial_rows = "\n".join(
+            [
+                "\t".join(
+                    [
+                        "1",
+                        "1.0",
+                        "60",
+                        "eth:ip:tcp",
+                        "10.0.0.1",
+                        "10.0.0.2",
+                        "6",
+                        "",
+                        "",
+                        "",
+                        "12345",
+                        "80",
+                        "0x00000002",
+                        "",
+                        "",
+                    ]
+                ),
+                "\t".join(
+                    [
+                        "2",
+                        "1.1",
+                        "60",
+                        "eth:ip:tcp",
+                        "10.0.0.2",
+                        "10.0.0.1",
+                        "6",
+                        "",
+                        "",
+                        "",
+                        "80",
+                        "12345",
+                        "0x00000012",
+                        "",
+                        "",
+                    ]
+                ),
+            ]
+        )
+        mock_popen.return_value = FakeProcess(partial_rows, "simulated tshark failure", 2)
+        fallback_packets = [
+            PacketRecord(
+                index=2,
+                timestamp=2.0,
+                flow_id="fallback-flow",
+                src_ip="192.168.0.10",
+                dst_ip="192.168.0.20",
+            )
+        ]
+
+        def fake_pyshark(pcap_path, start_index=0, stop_index=None):
+            self.assertEqual(pcap_path, "sample.pcap")
+            self.assertEqual(start_index, 2)
+            self.assertIsNone(stop_index)
+            return iter(fallback_packets)
+
+        mock_pyshark.side_effect = fake_pyshark
+
+        parser = PacketParser(mode="fast")
+        packets = list(parser.parse_file("sample.pcap", protocol_parsers=[]))
+
+        self.assertEqual(len(packets), 3)
+        self.assertEqual([packet.index for packet in packets], [0, 1, 2])
+        self.assertEqual(packets[-1].flow_id, "fallback-flow")
+        mock_pyshark.assert_called_once()
+
+    @patch("TrafficAnalyzer.parsers.packet_parser.shutil.which", return_value="/usr/bin/tshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.PacketParser._parse_file_pyshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.subprocess.Popen")
+    def test_fast_parser_handles_large_http_field_without_fallback(self, mock_popen, mock_pyshark, _mock_which):
+        class FakeProcess:
+            def __init__(self, stdout_text: str, stderr_text: str, retcode: int):
+                self.stdout = io.StringIO(stdout_text)
+                self.stderr = io.StringIO(stderr_text)
+                self._retcode = retcode
+
+            def wait(self, timeout=None):
+                return self._retcode
+
+        large_payload = "A" * 200000
+        row = "\t".join(
+            [
+                "1",
+                "1.0",
+                "60",
+                "eth:ip:tcp:http",
+                "10.0.0.1",
+                "10.0.0.2",
+                "6",
+                "",
+                "",
+                "",
+                "12345",
+                "80",
+                "0x00000018",
+                "",
+                "",
+                "POST",
+                "example.test",
+                "/upload/1.php",
+                "",
+                "ua",
+                "application/x-www-form-urlencoded",
+                "",
+                large_payload,
+            ]
+        )
+        mock_popen.return_value = FakeProcess(row, "", 0)
+        parser = PacketParser(mode="fast")
+
+        class FakeHTTPParser:
+            def required_fields(self):
+                return [
+                    "http.request.method",
+                    "http.host",
+                    "http.request.uri",
+                    "http.request.full_uri",
+                    "http.user_agent",
+                    "http.content_type",
+                    "http.response.code",
+                    "http.file_data",
+                ]
+
+        packets = list(parser.parse_file("sample.pcap", protocol_parsers=[FakeHTTPParser()]))
+
+        self.assertEqual(len(packets), 1)
+        self.assertEqual(packets[0].raw["http"]["file_data"], large_payload)
+        mock_pyshark.assert_not_called()
+
+    @patch("TrafficAnalyzer.parsers.packet_parser.shutil.which", return_value="/usr/bin/tshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.PacketParser._parse_file_pyshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.subprocess.Popen")
+    def test_fast_parser_fills_missing_frame_gap_with_pyshark_range(self, mock_popen, mock_pyshark, _mock_which):
+        class FakeProcess:
+            def __init__(self, stdout_text: str, stderr_text: str, retcode: int):
+                self.stdout = io.StringIO(stdout_text)
+                self.stderr = io.StringIO(stderr_text)
+                self._retcode = retcode
+
+            def wait(self, timeout=None):
+                return self._retcode
+
+        rows = "\n".join(
+            [
+                "\t".join(
+                    [
+                        "1",
+                        "1.0",
+                        "60",
+                        "eth:ip:tcp",
+                        "10.0.0.1",
+                        "10.0.0.2",
+                        "6",
+                        "",
+                        "",
+                        "",
+                        "12345",
+                        "80",
+                        "0x00000002",
+                        "",
+                        "",
+                    ]
+                ),
+                "\t".join(
+                    [
+                        "3",
+                        "1.2",
+                        "60",
+                        "eth:ip:tcp",
+                        "10.0.0.2",
+                        "10.0.0.1",
+                        "6",
+                        "",
+                        "",
+                        "",
+                        "80",
+                        "12345",
+                        "0x00000012",
+                        "",
+                        "",
+                    ]
+                ),
+            ]
+        )
+        mock_popen.return_value = FakeProcess(rows, "", 0)
+
+        def fake_pyshark(pcap_path, start_index=0, stop_index=None):
+            self.assertEqual(pcap_path, "sample.pcap")
+            self.assertEqual(start_index, 1)
+            self.assertEqual(stop_index, 2)
+            return iter(
+                [
+                    PacketRecord(
+                        index=1,
+                        timestamp=1.1,
+                        flow_id="gap-fill",
+                        src_ip="10.0.0.9",
+                        dst_ip="10.0.0.10",
+                    )
+                ]
+            )
+
+        mock_pyshark.side_effect = fake_pyshark
+        parser = PacketParser(mode="fast")
+        packets = list(parser.parse_file("sample.pcap", protocol_parsers=[]))
+
+        self.assertEqual([packet.index for packet in packets], [0, 1, 2])
+        self.assertEqual(packets[1].flow_id, "gap-fill")
+        mock_pyshark.assert_called_once()
+
     def test_protocol_registry_build_order(self):
         parsers = build_protocol_parsers()
         self.assertEqual([parser.name for parser in parsers], ["HTTP", "DNS", "TLS", "Modbus"])
 
     def test_attack_registry_uses_detector_config(self):
         detectors = build_attack_detectors()
-        port_scan = next(detector for detector in detectors if detector.name == "PortScanDetector")
-        self.assertEqual(port_scan.threshold, 10)
-        self.assertEqual(port_scan.time_window, 5.0)
+        self.assertEqual([detector.name for detector in detectors], ["WebShellDetector"])
 
     def test_doctor_command_exists(self):
         parser = build_parser()
@@ -311,9 +548,9 @@ class TestRegistryAndRuntime(unittest.TestCase):
                     status="running",
                     started_at="2026-03-30T03:00:00+00:00",
                 )
-                job.modules["attack:PortScanDetector"] = ModuleExecution(
+                job.modules["attack:WebShellDetector"] = ModuleExecution(
                     module_type="attack",
-                    module_name="PortScanDetector",
+                    module_name="WebShellDetector",
                     status="error",
                     error="detector failed",
                     finished_at="2026-03-30T04:00:00+00:00",
@@ -328,7 +565,7 @@ class TestRegistryAndRuntime(unittest.TestCase):
                 self.assertFalse(snapshot["can_delete"])
                 self.assertIn("运行中", snapshot["delete_block_reason"])
                 self.assertEqual(snapshot["recent_errors"][0]["scope"], "parse")
-                self.assertEqual(snapshot["recent_errors"][1]["name"], "PortScanDetector")
+                self.assertEqual(snapshot["recent_errors"][1]["name"], "WebShellDetector")
             finally:
                 manager.jobs.clear()
                 manager.shutdown()
@@ -498,6 +735,50 @@ class TestRegistryAndRuntime(unittest.TestCase):
                 conn.close()
                 manager.jobs.clear()
                 manager.shutdown()
+
+    @patch("TrafficAnalyzer.web.job_manager.Thread")
+    def test_job_manager_moves_uploaded_capture_into_project_dir(self, mock_thread_cls):
+        class FakeThread:
+            def __init__(self, *args, **kwargs):
+                self._alive = False
+
+            def start(self):
+                return None
+
+            def is_alive(self):
+                return self._alive
+
+            def join(self, timeout=None):
+                return None
+
+        mock_thread_cls.side_effect = lambda *args, **kwargs: FakeThread(*args, **kwargs)
+
+        with TemporaryDirectory() as tmpdir:
+            storage_root = Path(tmpdir) / "projects"
+            upload_path = Path(tmpdir) / "incoming.pcapng"
+            upload_path.write_bytes(b"pcap-data")
+
+            manager = JobManager(storage_root=str(storage_root))
+            job_id = manager.create_job(
+                filename="atta1.pcapng",
+                temp_path=str(upload_path),
+                max_packets=None,
+                source_size_bytes=upload_path.stat().st_size,
+            )
+
+            job = manager.jobs[job_id]
+            stored_path = Path(job.temp_path)
+            meta = json.loads(Path(job.metadata_path).read_text(encoding="utf-8"))
+
+            self.assertFalse(upload_path.exists())
+            self.assertTrue(stored_path.exists())
+            self.assertEqual(stored_path.read_bytes(), b"pcap-data")
+            self.assertEqual(stored_path.parent, Path(job.project_dir))
+            self.assertTrue(stored_path.name.startswith("source"))
+            self.assertEqual(meta["temp_path"], str(stored_path))
+            self.assertEqual(meta["capture_path"], str(stored_path))
+            manager.jobs.clear()
+            manager.shutdown()
 
 
 if __name__ == "__main__":

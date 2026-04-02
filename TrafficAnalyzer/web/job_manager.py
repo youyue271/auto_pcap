@@ -16,8 +16,10 @@ from threading import RLock, Thread
 import time
 import traceback
 from typing import Callable, Dict, Iterator, Optional
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
+from TrafficAnalyzer.attacks.webshell_parsers.godzilla import GodzillaParser
 from TrafficAnalyzer.config import LARGE_PCAP_THRESHOLD, PARALLEL_PARSE_MAX_WORKERS
 from TrafficAnalyzer.core.loader import PcapLoader
 from TrafficAnalyzer.core.models import PacketRecord
@@ -26,9 +28,64 @@ from TrafficAnalyzer.pipeline import build_default_pipeline_service
 
 PROJECT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "data" / "projects"
 
+BASIC_PROTOCOL_LAYER_HINTS: dict[str, set[str]] = {
+    "HTTP": {"http"},
+    "DNS": {"dns"},
+    "TLS": {"tls", "ssl"},
+    "Modbus": {"mbtcp", "modbus"},
+}
+
+BASIC_PROTOCOL_PORT_HINTS: dict[str, set[int]] = {
+    "HTTP": {80, 8000, 8008, 8080, 8081, 8888},
+    "DNS": {53},
+    "TLS": {443, 8443},
+    "Modbus": {502},
+}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _basic_protocol_hits(packet: PacketRecord) -> set[str]:
+    layers = {str(layer or "").strip().lower() for layer in (packet.layers or []) if str(layer or "").strip()}
+    ports = {
+        int(port)
+        for port in (packet.src_port, packet.dst_port)
+        if isinstance(port, int) and port > 0
+    }
+    hits: set[str] = set()
+    for name, layer_hints in BASIC_PROTOCOL_LAYER_HINTS.items():
+        if layers & layer_hints:
+            hits.add(name)
+            continue
+        port_hints = BASIC_PROTOCOL_PORT_HINTS.get(name) or set()
+        if ports & port_hints:
+            hits.add(name)
+    return hits
+
+
+def _update_basic_protocol_counter(counter: Counter[str], packet: PacketRecord) -> None:
+    for name in _basic_protocol_hits(packet):
+        counter[name] += 1
+
+
+def _merge_basic_protocol_counter(counter: Counter[str], values: dict | None) -> None:
+    for name, value in (values or {}).items():
+        try:
+            amount = int(value)
+        except (TypeError, ValueError):
+            continue
+        if amount > 0:
+            counter[str(name)] += amount
+
+
+def _normalize_basic_protocol_counter(counter: Counter[str]) -> dict[str, int]:
+    return {
+        str(name): int(count)
+        for name, count in counter.most_common()
+        if int(count) > 0
+    }
 
 
 def _init_packet_db(db_path: str) -> None:
@@ -87,6 +144,11 @@ def _write_json_atomic(path: str, payload: dict) -> None:
 def _read_json_file(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as fp:
         return json.load(fp)
+
+
+def _project_capture_path(project_dir: Path, filename: str, fallback_path: str = "") -> Path:
+    suffix = Path(filename).suffix or Path(fallback_path).suffix or ".pcap"
+    return project_dir / f"source{suffix}"
 
 
 def _packet_record_to_dict(record: PacketRecord) -> dict:
@@ -175,6 +237,7 @@ def _parse_packet_chunk(
     parser = PacketParser()
     records: list[dict] = []
     packet_count = 0
+    basic_protocol_counter: Counter[str] = Counter()
     pending_progress = 0
     last_progress_at = time.monotonic()
     writer = None
@@ -185,6 +248,7 @@ def _parse_packet_chunk(
 
         for record in parser.parse_file(pcap_path):
             packet_count += 1
+            _update_basic_protocol_counter(basic_protocol_counter, record)
             if writer is not None:
                 writer.write(_packet_record_to_json(record))
                 writer.write("\n")
@@ -214,6 +278,7 @@ def _parse_packet_chunk(
     result = {
         "pcap_path": pcap_path,
         "packet_count": packet_count,
+        "basic_protocol_distribution": _normalize_basic_protocol_counter(basic_protocol_counter),
     }
     if output_path:
         result["output_path"] = output_path
@@ -251,12 +316,14 @@ def _analyze_chunk_map(task: tuple[str, str, str, list[str]]) -> dict:
         enabled_protocols=None,
         enabled_attacks=[module_name],
     )
+    detail = report.stats.get("attack_detailed_views", {}).get(module_name, {})
     return {
         "summary": {
             "packet_count": report.packet_count,
             "protocol_event_count": report.stats.get("protocol_event_count", 0),
             "alert_count": report.stats.get("alert_count", 0),
         },
+        "detail": detail,
         "alerts": [asdict(alert) for alert in report.alerts],
         "debug": report.stats.get("debug", {}),
     }
@@ -364,7 +431,10 @@ def _run_mapreduce_worker(
                 _merge_debug(debug_acc, partial.get("debug", {}))
 
         for key, counter in top_counters.items():
-            limit = 20 if key == "top_func_codes" else 30
+            if module_name == "HTTP" and key in {"top_hosts", "top_paths"}:
+                limit = 200
+            else:
+                limit = 20 if key == "top_func_codes" else 30
             detail[key] = counter.most_common(limit)
 
         return {
@@ -375,6 +445,8 @@ def _run_mapreduce_worker(
         }
 
     alerts: list[dict] = []
+    detail = {}
+    top_counters: dict[str, Counter[str]] = {}
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         for partial in executor.map(_analyze_chunk_map, tasks):
             part_summary = partial.get("summary", {})
@@ -383,12 +455,18 @@ def _run_mapreduce_worker(
             summary["alert_count"] += int(part_summary.get("alert_count", 0))
             if progress_callback is not None:
                 progress_callback(summary["packet_count"])
+            _merge_protocol_detail(detail, top_counters, partial.get("detail", {}))
             alerts.extend(partial.get("alerts", []))
             _merge_debug(debug_acc, partial.get("debug", {}))
+
+    for key, counter in top_counters.items():
+        limit = 20 if key in {"top_rules", "top_families", "top_variants", "top_func_codes"} else 30
+        detail[key] = counter.most_common(limit)
 
     return {
         "module": {"type": module_type, "name": module_name},
         "summary": summary,
+        "detail": detail,
         "alerts": alerts,
         "debug": _finalize_debug(debug_acc),
     }
@@ -413,8 +491,8 @@ def _module_worker(
             def progress_callback(processed: int) -> None:
                 _write_module_progress(progress_path, processed=processed, total=total_packets)
 
-        map_reducible_attacks = {"SQLInjectionDetector", "BehinderDetector"}
-        enable_mapreduce = module_type == "protocol" or (
+        map_reducible_attacks = set()
+        enable_mapreduce = (module_type == "protocol" and module_name != "HTTP") or (
             module_type == "attack" and module_name in map_reducible_attacks
         )
 
@@ -462,6 +540,7 @@ def _module_worker(
                 enabled_protocols=None,
                 enabled_attacks=[module_name],
             )
+            detail = report.stats.get("attack_detailed_views", {}).get(module_name, {})
             result = {
                 "module": {"type": module_type, "name": module_name},
                 "summary": {
@@ -469,6 +548,7 @@ def _module_worker(
                     "protocol_event_count": report.stats.get("protocol_event_count", 0),
                     "alert_count": report.stats.get("alert_count", 0),
                 },
+                "detail": detail,
                 "alerts": [asdict(alert) for alert in report.alerts],
                 "debug": report.stats.get("debug", {}),
             }
@@ -530,6 +610,7 @@ class AnalysisJob:
     progress_updated_at: Optional[str] = None
     parse_error: Optional[str] = None
     parse_mode: str = "sequential"
+    basic_protocol_distribution: Dict[str, int] = field(default_factory=dict)
     revision: int = 0
     modules: Dict[str, ModuleExecution] = field(default_factory=dict)
     parse_thread: Optional[Thread] = field(default=None, repr=False)
@@ -689,7 +770,11 @@ class JobManager:
             job_id=str(payload.get("job_id") or payload.get("project_id") or project_dir.name),
             project_id=str(payload.get("project_id") or payload.get("job_id") or project_dir.name),
             filename=str(payload.get("filename") or project_dir.name),
-            temp_path="",
+            temp_path=str(
+                payload.get("temp_path")
+                or payload.get("capture_path")
+                or _project_capture_path(project_dir, str(payload.get("filename") or project_dir.name))
+            ),
             db_path=str(db_path),
             max_packets=payload.get("max_packets"),
             project_dir=str(project_dir),
@@ -707,6 +792,11 @@ class JobManager:
             progress_updated_at=payload.get("progress_updated_at"),
             parse_error=parse_error,
             parse_mode=str(payload.get("parse_mode") or "sequential"),
+            basic_protocol_distribution={
+                str(name): int(value)
+                for name, value in (payload.get("basic_protocol_distribution") or {}).items()
+                if isinstance(value, (int, float))
+            },
         )
 
         modules_payload = payload.get("modules") or {}
@@ -851,6 +941,8 @@ class JobManager:
                 "project_id": job.project_id,
                 "job_id": job.job_id,
                 "filename": job.filename,
+                "temp_path": job.temp_path,
+                "capture_path": job.temp_path,
                 "status": job.status,
                 "created_at": job.created_at,
                 "started_at": job.started_at,
@@ -864,6 +956,7 @@ class JobManager:
                 "max_packets": job.max_packets,
                 "parse_error": job.parse_error,
                 "parse_mode": job.parse_mode,
+                "basic_protocol_distribution": job.basic_protocol_distribution,
                 "modules": modules_payload,
             }
 
@@ -884,12 +977,14 @@ class JobManager:
         project_dir.mkdir(parents=True, exist_ok=True)
         db_path = str(project_dir / "packets.sqlite3")
         _init_packet_db(db_path)
+        capture_path = _project_capture_path(project_dir, filename, temp_path)
+        shutil.move(temp_path, capture_path)
 
         job = AnalysisJob(
             job_id=job_id,
             project_id=job_id,
             filename=filename,
-            temp_path=temp_path,
+            temp_path=str(capture_path),
             db_path=db_path,
             max_packets=max_packets,
             project_dir=str(project_dir),
@@ -1002,6 +1097,7 @@ class JobManager:
                 pending_module_count=pending_modules,
                 running_module_count=running_modules,
             )
+            recommended_protocol_modules = self._recommend_protocol_modules(job.basic_protocol_distribution)
             if job.target_packet_count:
                 progress_percent = round((job.packet_count / job.target_packet_count) * 100, 2)
             for module in job.modules.values():
@@ -1043,6 +1139,8 @@ class JobManager:
                         "packet_count": job.packet_count,
                         "target_packet_count": job.target_packet_count,
                         "progress_percent": progress_percent,
+                        "basic_protocol_distribution": job.basic_protocol_distribution,
+                        "recommended_protocol_modules": recommended_protocol_modules,
                         "active_modules": active_modules,
                         "running_modules": running_modules,
                         "pending_modules": pending_modules,
@@ -1054,6 +1152,26 @@ class JobManager:
                     "modules": modules,
                 },
             }
+
+    def _recommend_protocol_modules(self, distribution: dict[str, int]) -> list[dict]:
+        protocol_catalog = {
+            str(item.get("name") or ""): item
+            for item in self.module_catalog.get("protocols", [])
+        }
+        rows: list[dict] = []
+        for name, count in sorted((distribution or {}).items(), key=lambda item: (-int(item[1]), str(item[0]))):
+            item = protocol_catalog.get(str(name))
+            if not item:
+                continue
+            rows.append(
+                {
+                    "type": "protocol",
+                    "name": str(name),
+                    "count": int(count),
+                    "description": str(item.get("description") or ""),
+                }
+            )
+        return rows
 
     def job_results(self, job_id: str) -> dict:
         job = self._get_job(job_id)
@@ -1072,6 +1190,255 @@ class JobManager:
                 "modules": modules,
             }
 
+    def parse_webshell_godzilla_key(
+        self,
+        job_id: str,
+        *,
+        key_text: str | None = None,
+        key_file_name: str | None = None,
+        key_file_bytes: bytes | None = None,
+    ) -> dict:
+        job = self._get_job(job_id)
+        with job.lock:
+            module = job.modules.get("attack:WebShellDetector")
+            module_result = dict(module.result or {}) if module and module.result else None
+            db_path = str(job.db_path)
+        if not module_result:
+            raise HTTPError("当前项目还没有 WebShellDetector 结果")
+
+        parser = GodzillaParser()
+        contexts = self._collect_godzilla_session_contexts(module_result)
+        if not contexts:
+            raise HTTPError("当前样本没有可用的哥斯拉 SESSION/XOR/Base64 流量")
+
+        candidates, source_meta = self._resolve_godzilla_key_candidates(
+            key_text=key_text,
+            key_file_name=key_file_name,
+            key_file_bytes=key_file_bytes,
+        )
+        if not candidates:
+            raise HTTPError("请输入密钥、文件路径，或选择一个密钥文件")
+
+        matched_key = None
+        matched_context = None
+        for context in contexts:
+            for candidate in candidates:
+                if parser.session_key_matches_markers(
+                    pass_name=context["pass_param"],
+                    left=context["marker_left"],
+                    right=context["marker_right"],
+                    key=candidate,
+                ):
+                    matched_key = candidate
+                    matched_context = context
+                    break
+            if matched_key is not None:
+                break
+
+        exact_match = matched_key is not None
+        if matched_key is None and len(candidates) == 1:
+            matched_key = candidates[0]
+
+        if matched_key is None:
+            return {
+                "matched": False,
+                "exact_match": False,
+                "candidate_source": source_meta,
+                "candidate_count": len(candidates),
+                "contexts": contexts,
+            }
+
+        decoded_contexts: list[dict] = []
+        for context in contexts:
+            transactions = self._extract_godzilla_session_transactions(
+                db_path=db_path,
+                uri=context["uri"],
+                pass_param=context["pass_param"],
+            )
+            entries: list[dict] = []
+            for item in transactions:
+                request_decoded = parser.decode_session_request_with_key(
+                    body=item["request_body"],
+                    key=matched_key,
+                    pass_name=context["pass_param"],
+                )
+                response_decoded = parser.decode_session_response_with_key(
+                    body=item["response_body"],
+                    key=matched_key,
+                ) if item.get("response_body") else None
+                entries.append(
+                    {
+                        "request_packet_index": item.get("request_packet_index"),
+                        "response_packet_index": item.get("response_packet_index"),
+                        "request": request_decoded,
+                        "response": response_decoded,
+                    }
+                )
+            decoded_contexts.append(
+                {
+                    **context,
+                    "entry_count": len(entries),
+                    "entries": entries,
+                }
+            )
+
+        return {
+            "matched": True,
+            "exact_match": exact_match,
+            "matched_context": matched_context,
+            "candidate_source": source_meta,
+            "candidate_count": len(candidates),
+            "used_key": matched_key,
+            "contexts": decoded_contexts,
+        }
+
+    def _collect_godzilla_session_contexts(self, module_result: dict) -> list[dict]:
+        alerts = module_result.get("alerts") or []
+        rows: list[dict] = []
+        seen: set[tuple[str, str, str, str]] = set()
+        for alert in alerts:
+            evidence = alert.get("evidence") or {}
+            if str(evidence.get("stage") or "") != "request":
+                continue
+            if str(evidence.get("godzilla_variant_id") or "") != "godzilla_php_xor_base64_session_v1":
+                continue
+            markers = evidence.get("session_markers") or {}
+            left = str(markers.get("left") or "").strip().lower()
+            right = str(markers.get("right") or "").strip().lower()
+            pass_param = str(markers.get("pass") or "pass").strip() or "pass"
+            uri = self._normalize_http_path(str(evidence.get("uri") or ""))
+            if not left or not right or not uri:
+                continue
+            signature = (uri, pass_param, left, right)
+            if signature in seen:
+                continue
+            seen.add(signature)
+            rows.append(
+                {
+                    "uri": uri,
+                    "pass_param": pass_param,
+                    "marker_left": left,
+                    "marker_right": right,
+                    "request_packet_index": (alert.get("packet_indexes") or [None])[0],
+                }
+            )
+        return rows
+
+    def _extract_godzilla_session_transactions(self, *, db_path: str, uri: str, pass_param: str) -> list[dict]:
+        target_uri = self._normalize_http_path(uri)
+        requests: dict[int, dict] = {}
+        transactions: list[dict] = []
+        for packet in _stream_packets_from_db(db_path=db_path, fetch_size=self.module_db_fetch_size):
+            http = packet.raw.get("http", {}) if isinstance(packet.raw, dict) else {}
+            if not isinstance(http, dict):
+                continue
+
+            method = str(http.get("request_method") or "").upper()
+            if method:
+                request_uri = self._normalize_http_path(str(http.get("request_uri") or http.get("request_full_uri") or ""))
+                if request_uri != target_uri:
+                    continue
+                request_body = str(http.get("file_data") or packet.payload_text or "")
+                params = parse_qs(request_body, keep_blank_values=True)
+                if pass_param not in params:
+                    continue
+                frame_number = packet.index + 1
+                requests[frame_number] = {
+                    "request_packet_index": packet.index,
+                    "response_packet_index": None,
+                    "request_body": request_body,
+                    "response_body": "",
+                }
+                continue
+
+            request_in = self._safe_int(http.get("request_in"))
+            if request_in is None:
+                continue
+            pending = requests.get(request_in)
+            if pending is None:
+                continue
+            transaction = {
+                **pending,
+                "response_packet_index": packet.index,
+                "response_body": str(http.get("file_data") or packet.payload_text or ""),
+            }
+            transactions.append(transaction)
+            requests.pop(request_in, None)
+
+        if requests:
+            transactions.extend(sorted(requests.values(), key=lambda item: int(item.get("request_packet_index") or -1)))
+        transactions.sort(key=lambda item: int(item.get("request_packet_index") or -1))
+        return transactions
+
+    def _resolve_godzilla_key_candidates(
+        self,
+        *,
+        key_text: str | None,
+        key_file_name: str | None,
+        key_file_bytes: bytes | None,
+    ) -> tuple[list[str], dict]:
+        if key_file_bytes:
+            return self._split_godzilla_key_lines(key_file_bytes), {
+                "mode": "upload_file",
+                "label": key_file_name or "uploaded",
+            }
+
+        text = str(key_text or "").strip()
+        if not text:
+            return [], {"mode": "empty", "label": ""}
+
+        file_path = self._normalize_local_input_path(text)
+        if file_path and file_path.is_file():
+            return self._split_godzilla_key_lines(file_path.read_bytes()), {
+                "mode": "path_file",
+                "label": str(file_path),
+            }
+
+        lines = [item.strip() for item in text.splitlines() if item.strip()]
+        if len(lines) > 1:
+            return lines, {"mode": "inline_lines", "label": f"{len(lines)} lines"}
+        return [text], {"mode": "single_key", "label": text}
+
+    def _split_godzilla_key_lines(self, payload: bytes) -> list[str]:
+        for encoding in ("utf-8", "gb18030", "latin1"):
+            try:
+                text = payload.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            text = payload.decode("latin1", errors="replace")
+        seen: set[str] = set()
+        rows: list[str] = []
+        for line in text.splitlines():
+            candidate = line.strip().strip("\ufeff")
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            rows.append(candidate)
+        return rows
+
+    def _normalize_local_input_path(self, raw_path: str) -> Path | None:
+        text = str(raw_path or "").strip().strip('"').strip("'")
+        if not text:
+            return None
+        win_match = text[:3] if len(text) >= 3 else ""
+        if len(text) >= 3 and text[1:3] in {":\\", ":/"} and text[0].isalpha():
+            drive = text[0].lower()
+            suffix = text[3:].replace("\\", "/")
+            return Path(f"/mnt/{drive}/{suffix}")
+        return Path(text).expanduser()
+
+    def _normalize_http_path(self, raw_uri: str) -> str:
+        parsed = urlsplit(str(raw_uri or ""))
+        return parsed.path or str(raw_uri or "")
+
+    def _safe_int(self, value: object) -> int | None:
+        try:
+            return int(str(value).strip())
+        except Exception:
+            return None
+
     def shutdown(self) -> None:
         with self.lock:
             if self._shutdown_done:
@@ -1086,6 +1453,7 @@ class JobManager:
                 db_path = job.db_path
                 parse_thread = job.parse_thread
                 managed_temp = job.managed_temp
+                project_dir = job.project_dir
 
             for module in modules:
                 self._terminate_process(module.process)
@@ -1113,7 +1481,7 @@ class JobManager:
             if parse_thread and parse_thread.is_alive():
                 parse_thread.join(timeout=1.0)
 
-            if managed_temp:
+            if managed_temp and not project_dir:
                 self._safe_remove_file(temp_path)
             if not job.project_dir:
                 self._safe_remove_file(db_path)
@@ -1129,25 +1497,27 @@ class JobManager:
         conn = sqlite3.connect(job.db_path, timeout=60)
         batch: list[tuple[int, str]] = []
         parsed_count = 0
+        basic_protocol_counter: Counter[str] = Counter()
         split_files: list[str] = []
         split_dir: Optional[str] = None
 
         try:
             self._initialize_packet_progress(job)
             if self._should_parallel_parse(job):
-                parsed_count, split_files, split_dir = self._run_parallel_base_parse(
+                parsed_count, split_files, split_dir, basic_protocol_counter = self._run_parallel_base_parse(
                     job=job,
                     conn=conn,
                     batch=batch,
                 )
             else:
-                parsed_count = self._run_sequential_base_parse(job=job, conn=conn, batch=batch)
+                parsed_count, basic_protocol_counter = self._run_sequential_base_parse(job=job, conn=conn, batch=batch)
 
             with job.lock:
                 job.packet_count = parsed_count
                 job.status = "parsed"
                 job.finished_at = _now_iso()
                 job.progress_updated_at = job.finished_at
+                job.basic_protocol_distribution = _normalize_basic_protocol_counter(basic_protocol_counter)
                 job.bump_revision()
         except Exception as exc:
             with job.lock:
@@ -1167,8 +1537,6 @@ class JobManager:
                     os.rmdir(split_dir)
                 except OSError:
                     pass
-            if job.managed_temp:
-                self._safe_remove_file(job.temp_path)
 
         self._persist_job(job)
         self._start_pending_modules(job_id)
@@ -1248,9 +1616,10 @@ class JobManager:
         job: AnalysisJob,
         conn: sqlite3.Connection,
         batch: list[tuple[int, str]],
-    ) -> int:
+    ) -> tuple[int, Counter[str]]:
         parser = self.pipeline_service.packet_parser
         parsed_count = 0
+        basic_protocol_counter: Counter[str] = Counter()
         last_revision_refresh = time.monotonic()
         with job.lock:
             job.parse_mode = "sequential"
@@ -1261,6 +1630,7 @@ class JobManager:
 
             batch.append((packet.index, _packet_record_to_json(packet)))
             parsed_count += 1
+            _update_basic_protocol_counter(basic_protocol_counter, packet)
 
             if len(batch) >= self.db_flush_size:
                 self._flush_packet_batch(conn, batch)
@@ -1271,7 +1641,7 @@ class JobManager:
                 last_revision_refresh = progress_mark
 
         self._flush_packet_batch(conn, batch)
-        return parsed_count
+        return parsed_count, basic_protocol_counter
 
     def _merge_chunk_output(
         self,
@@ -1299,7 +1669,7 @@ class JobManager:
         job: AnalysisJob,
         conn: sqlite3.Connection,
         batch: list[tuple[int, str]],
-    ) -> tuple[int, list[str], Optional[str]]:
+    ) -> tuple[int, list[str], Optional[str], Counter[str]]:
         loader = PcapLoader(job.temp_path)
         split_files = loader.split_pcap(target_chunk_size_mb=self.split_target_mb)
         split_files = [path for path in split_files if path != job.temp_path]
@@ -1307,10 +1677,12 @@ class JobManager:
         if not split_files:
             with job.lock:
                 job.parse_mode = "sequential"
-            return self._run_sequential_base_parse(job=job, conn=conn, batch=batch), [], None
+            parsed_count, basic_protocol_counter = self._run_sequential_base_parse(job=job, conn=conn, batch=batch)
+            return parsed_count, [], None, basic_protocol_counter
 
         worker_count = min(len(split_files), self.parallel_parse_max_workers, max(2, os.cpu_count() or 2))
         parsed_count = 0
+        basic_protocol_counter: Counter[str] = Counter()
         split_dir = os.path.dirname(split_files[0]) if split_files else None
         chunk_output_paths = [
             os.path.join(split_dir or tempfile.gettempdir(), f".parsed_chunk_{chunk_index:05d}.jsonl")
@@ -1345,6 +1717,7 @@ class JobManager:
 
                 while next_chunk_index in completed_results:
                     result = completed_results.pop(next_chunk_index)
+                    _merge_basic_protocol_counter(basic_protocol_counter, result.get("basic_protocol_distribution"))
                     output_path = str(result.get("output_path") or "")
                     if output_path:
                         parsed_count = self._merge_chunk_output(
@@ -1359,7 +1732,7 @@ class JobManager:
         self._flush_packet_batch(conn, batch)
         for output_path in chunk_output_paths:
             self._safe_remove_file(output_path)
-        return parsed_count, split_files, split_dir
+        return parsed_count, split_files, split_dir, basic_protocol_counter
 
     def _flush_packet_batch(self, conn: sqlite3.Connection, batch: list[tuple[int, str]]) -> None:
         if not batch:
@@ -1409,7 +1782,7 @@ class JobManager:
                     "db_path": job.db_path,
                     "module_type": module.module_type,
                     "module_name": module.module_name,
-                    "source": job.filename,
+                    "source": job.temp_path or job.filename,
                     "result_path": result_path,
                     "fetch_size": self.module_db_fetch_size,
                     "progress_path": progress_path,

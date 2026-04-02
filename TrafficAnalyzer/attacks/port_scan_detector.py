@@ -45,6 +45,7 @@ class PortScanDetector(BaseAttackDetector):
                 severity="high",
                 confidence=0.9,
                 description=f"{self.time_window:.1f}秒内访问了 {len(unique_ports)} 个不同端口",
+                detector=self.name,
                 packet_indexes=packet_indexes,
                 flow_id=packet.flow_id,
                 evidence={

@@ -70,6 +70,7 @@ class BehinderDetector(BaseAttackDetector):
                     severity="high",
                     confidence=min(0.65 + 0.07 * score, 0.97),
                     description="HTTP 流量命中多项冰蝎行为特征",
+                    detector=self.name,
                     packet_indexes=[packet.index],
                     flow_id=packet.flow_id,
                     evidence={
