@@ -11,15 +11,18 @@ PROTOCOL_PARSER_PATHS = (
     "TrafficAnalyzer.protocols.dns_parser.DNSProtocolParser",
     "TrafficAnalyzer.protocols.tls_parser.TLSProtocolParser",
     "TrafficAnalyzer.protocols.modbus_parser.ModbusProtocolParser",
+    "TrafficAnalyzer.protocols.usb_parser.USBProtocolParser",
 )
 
 ATTACK_DETECTOR_PATHS = (
     "TrafficAnalyzer.attacks.webshell_detector.WebShellDetector",
+    "TrafficAnalyzer.attacks.sql_injection_detector.SQLInjectionDetector",
 )
 
 # Detector configurations keyed by current detector class name.
 DETECTOR_CONFIGS = {
     "WebShellDetector": {},
+    "SQLInjectionDetector": {},
 }
 
 # Backward-compatible alias for earlier naming in the project.

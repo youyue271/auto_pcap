@@ -19,6 +19,7 @@ import traceback
 from typing import Callable, Dict, Iterator, Optional
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
+import re
 
 from TrafficAnalyzer.attacks.webshell_parsers.godzilla import GodzillaParser
 from TrafficAnalyzer.config import LARGE_PCAP_THRESHOLD, PARALLEL_PARSE_MAX_WORKERS
@@ -26,6 +27,7 @@ from TrafficAnalyzer.core.loader import PcapLoader
 from TrafficAnalyzer.core.models import PacketRecord
 from TrafficAnalyzer.parsers.packet_parser import PacketParser
 from TrafficAnalyzer.pipeline import build_default_pipeline_service
+from TrafficAnalyzer.utils.tls_keylog import normalize_local_input_path, resolve_tls_keylog_text
 
 PROJECT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "data" / "projects"
 
@@ -34,6 +36,7 @@ BASIC_PROTOCOL_LAYER_HINTS: dict[str, set[str]] = {
     "DNS": {"dns"},
     "TLS": {"tls", "ssl"},
     "Modbus": {"mbtcp", "modbus"},
+    "USB": {"usb", "usbhid"},
 }
 
 BASIC_PROTOCOL_PORT_HINTS: dict[str, set[int]] = {
@@ -197,6 +200,26 @@ def _read_module_progress(path: str | None) -> dict | None:
     }
 
 
+def _elapsed_ms(started_at: str | None, finished_at: str | None = None) -> int | None:
+    started_text = str(started_at or "").strip()
+    if not started_text:
+        return None
+    try:
+        started_dt = datetime.fromisoformat(started_text)
+    except ValueError:
+        return None
+
+    finished_text = str(finished_at or "").strip()
+    if finished_text:
+        try:
+            finished_dt = datetime.fromisoformat(finished_text)
+        except ValueError:
+            finished_dt = datetime.now(timezone.utc)
+    else:
+        finished_dt = datetime.now(timezone.utc)
+    return max(0, int((finished_dt - started_dt).total_seconds() * 1000))
+
+
 def _progress_packet_stream(
     packets: Iterator[PacketRecord],
     *,
@@ -234,8 +257,9 @@ def _parse_packet_chunk(
     progress_callback: Callable[[int], None] | None = None,
     progress_interval: int = 1000,
     output_path: str | None = None,
+    tls_keylog_text: str | None = None,
 ) -> dict:
-    parser = PacketParser()
+    parser = PacketParser(tls_keylog_text=tls_keylog_text)
     records: list[dict] = []
     packet_count = 0
     basic_protocol_counter: Counter[str] = Counter()
@@ -492,8 +516,9 @@ def _module_worker(
             def progress_callback(processed: int) -> None:
                 _write_module_progress(progress_path, processed=processed, total=total_packets)
 
+        map_reducible_protocols = {"DNS", "TLS", "Modbus"}
         map_reducible_attacks = set()
-        enable_mapreduce = (module_type == "protocol" and module_name != "HTTP") or (
+        enable_mapreduce = (module_type == "protocol" and module_name in map_reducible_protocols) or (
             module_type == "attack" and module_name in map_reducible_attacks
         )
 
@@ -589,6 +614,23 @@ class ModuleExecution:
 
 
 @dataclass
+class TLSDecryptExecution:
+    task_id: str = ""
+    key_hash: str = ""
+    status: str = "idle"  # idle | running | completed | error
+    stage: str = "idle"
+    message: str = ""
+    keylog_source: Optional[dict] = None
+    created_at: str = field(default_factory=_now_iso)
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    progress: dict = field(default_factory=lambda: _module_progress_payload(processed=0, total=None))
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+
+@dataclass
 class AnalysisJob:
     job_id: str
     filename: str
@@ -599,6 +641,7 @@ class AnalysisJob:
     project_dir: str = ""
     metadata_path: str = ""
     source_size_bytes: Optional[int] = None
+    tls_keylog_text: Optional[str] = field(default=None, repr=False)
     managed_temp: bool = True
     status: str = "queued"  # queued | parsing | parsed | error
     created_at: str = field(default_factory=_now_iso)
@@ -614,6 +657,7 @@ class AnalysisJob:
     basic_protocol_distribution: Dict[str, int] = field(default_factory=dict)
     revision: int = 0
     modules: Dict[str, ModuleExecution] = field(default_factory=dict)
+    tls_decrypt: Optional[TLSDecryptExecution] = field(default=None, repr=False)
     parse_thread: Optional[Thread] = field(default=None, repr=False)
     lock: RLock = field(default_factory=RLock, repr=False)
 
@@ -971,8 +1015,21 @@ class JobManager:
         temp_path: str,
         max_packets: Optional[int],
         source_size_bytes: Optional[int] = None,
+        tls_keylog_text: str | None = None,
+        tls_keylog_file_name: str | None = None,
+        tls_keylog_file_bytes: bytes | None = None,
         managed_temp: bool = True,
     ) -> str:
+        normalized_tls_keylog = None
+        if (tls_keylog_text and str(tls_keylog_text).strip()) or tls_keylog_file_bytes:
+            normalized_tls_keylog, _ = resolve_tls_keylog_text(
+                key_text=tls_keylog_text,
+                key_file_name=tls_keylog_file_name,
+                key_file_bytes=tls_keylog_file_bytes,
+            )
+            if not normalized_tls_keylog:
+                raise HTTPError("TLS keylog 内容无效，未解析到可用密钥行")
+
         job_id = uuid4().hex
         project_dir = self.storage_root / job_id
         project_dir.mkdir(parents=True, exist_ok=True)
@@ -991,6 +1048,7 @@ class JobManager:
             project_dir=str(project_dir),
             metadata_path=str(project_dir / "meta.json"),
             source_size_bytes=source_size_bytes,
+            tls_keylog_text=normalized_tls_keylog,
             managed_temp=managed_temp,
         )
         parse_thread = Thread(target=self._run_base_parse, args=(job_id,), daemon=True, name=f"parse-{job_id[:6]}")
@@ -1060,31 +1118,30 @@ class JobManager:
         process: Optional[Process] = None
         result_path: Optional[str] = None
         progress_path: Optional[str] = None
+        removed_snapshot: Optional[dict] = None
         with job.lock:
             module = job.modules.get(key)
             if not module:
                 return {"removed": False, "reason": "module_not_found"}
+            removed_snapshot = self._module_snapshot(module)
             module.stop_requested = True
-            module.status = "stopped"
-            module.finished_at = _now_iso()
-            module.error = None
-            module.result = None
             process = module.process
             result_path = module.result_path
             progress_path = module.progress_path
-            module.progress_path = None
+            job.modules.pop(key, None)
             job.bump_revision()
 
         self._terminate_process(process)
         self._safe_remove_file(result_path)
         self._safe_remove_file(progress_path)
         self._persist_job(job)
-        return {"removed": True, "module": self._module_snapshot(module)}
+        return {"removed": True, "module": removed_snapshot or {"module_type": module_type, "module_name": module_name, "status": "removed"}}
 
     def job_status(self, job_id: str) -> dict:
         job = self._get_job(job_id)
         with job.lock:
             modules = [self._module_snapshot(m) for m in job.modules.values()]
+            tls_decrypt = self._tls_decrypt_snapshot(job.tls_decrypt)
             running_modules = sum(1 for m in modules if m["status"] == "running")
             pending_modules = sum(1 for m in modules if m["status"] == "pending")
             completed_modules = sum(1 for m in modules if m["status"] == "completed")
@@ -1151,6 +1208,7 @@ class JobManager:
                         "alert_count": alerts,
                     },
                     "modules": modules,
+                    "tls_decrypt": tls_decrypt,
                 },
             }
 
@@ -1212,11 +1270,32 @@ class JobManager:
         if not contexts:
             raise HTTPError("当前样本没有可用的哥斯拉 SESSION/XOR/Base64 流量")
 
+        detected_keys = self._collect_godzilla_detected_keys(contexts)
         candidates, source_meta = self._resolve_godzilla_key_candidates(
             key_text=key_text,
             key_file_name=key_file_name,
             key_file_bytes=key_file_bytes,
         )
+        detected_candidates = self._expand_godzilla_key_candidates(
+            detected_keys,
+            raw_strategy_label="流量中检测到",
+            derived_strategy_prefix="流量中检测到后派生",
+        )
+        if detected_candidates:
+            if candidates:
+                candidates = self._merge_godzilla_key_candidates(candidates, detected_candidates)
+                source_meta = {
+                    **source_meta,
+                    "detected_key_count": len(detected_keys),
+                }
+            else:
+                candidates = detected_candidates
+                source_meta = {
+                    "mode": "traffic_detected",
+                    "label": detected_keys[0] if len(detected_keys) == 1 else f"{len(detected_keys)} 个密钥",
+                    "input_count": len(detected_keys),
+                    "detected_key_count": len(detected_keys),
+                }
         if not candidates:
             raise HTTPError("请输入密钥、文件路径，或选择一个密钥文件")
 
@@ -1250,6 +1329,9 @@ class JobManager:
                 "candidate_source": source_meta,
                 "candidate_count": len(candidates),
                 "candidate_input_count": int(source_meta.get("input_count") or 0),
+                "detected_key": detected_keys[0] if len(detected_keys) == 1 else "",
+                "detected_keys": detected_keys,
+                "detected_key_count": len(detected_keys),
                 "contexts": contexts,
             }
 
@@ -1294,16 +1376,401 @@ class JobManager:
             "candidate_source": source_meta,
             "candidate_count": len(candidates),
             "candidate_input_count": int(source_meta.get("input_count") or 0),
+            "detected_key": detected_keys[0] if len(detected_keys) == 1 else "",
+            "detected_keys": detected_keys,
+            "detected_key_count": len(detected_keys),
             "used_key": matched_key,
             "matched_input": str((matched_candidate or {}).get("source") or ""),
             "matched_derivation": str((matched_candidate or {}).get("strategy_label") or ""),
             "contexts": decoded_contexts,
         }
 
+    def parse_sql_injection_bool(
+        self,
+        job_id: str,
+        *,
+        true_marker: str | None = None,
+    ) -> dict:
+        job = self._get_job(job_id)
+        with job.lock:
+            module = job.modules.get("attack:SQLInjectionDetector")
+            module_result = dict(module.result or {}) if module and module.result else None
+            db_path = str(job.db_path)
+        if not module_result:
+            raise HTTPError("当前项目还没有 SQLInjectionDetector 结果")
+
+        contexts = self._collect_sqli_bool_contexts(module_result)
+        if not contexts:
+            raise HTTPError("当前样本没有可用的 Bool 盲注流量")
+
+        marker = str(true_marker or "").strip()
+        response_texts = self._load_http_payloads_by_packet_indexes(
+            db_path=db_path,
+            packet_indexes=[
+                int(entry["response_packet_index"])
+                for context in contexts
+                for entry in (context.get("entries") or [])
+                if self._safe_int(entry.get("response_packet_index")) is not None
+            ],
+        ) if marker else {}
+
+        parsed_contexts = [
+            self._parse_sqli_bool_context(
+                context,
+                true_marker=marker,
+                response_texts=response_texts,
+            )
+            for context in contexts
+        ]
+        best_context = max(parsed_contexts, key=lambda item: len(str(item.get("restored_text") or "")), default=None)
+        return {
+            "matched": any(str(item.get("restored_text") or "") for item in parsed_contexts),
+            "analysis_mode": "marker_text" if marker else "response_length",
+            "analysis_label": "响应正文包含指定字符串" if marker else "响应长度聚类",
+            "true_marker": marker,
+            "context_count": len(parsed_contexts),
+            "best_text": str((best_context or {}).get("restored_text") or ""),
+            "contexts": parsed_contexts,
+        }
+
+    def parse_tls_keylog(
+        self,
+        job_id: str,
+        *,
+        key_text: str | None = None,
+        key_file_name: str | None = None,
+        key_file_bytes: bytes | None = None,
+    ) -> dict:
+        job = self._get_job(job_id)
+        normalized_keylog, source_meta = resolve_tls_keylog_text(
+            key_text=key_text,
+            key_file_name=key_file_name,
+            key_file_bytes=key_file_bytes,
+        )
+        if not normalized_keylog:
+            raise HTTPError("请输入 TLS keylog、本地文件路径，或选择一个 keylog 文件")
+
+        return self._parse_tls_keylog_report(
+            job=job,
+            normalized_keylog=normalized_keylog,
+            source_meta=source_meta,
+            progress_callback=None,
+        )
+
+    def start_tls_decrypt_task(
+        self,
+        job_id: str,
+        *,
+        key_text: str | None = None,
+        key_file_name: str | None = None,
+        key_file_bytes: bytes | None = None,
+    ) -> dict:
+        job = self._get_job(job_id)
+        normalized_keylog, source_meta = resolve_tls_keylog_text(
+            key_text=key_text,
+            key_file_name=key_file_name,
+            key_file_bytes=key_file_bytes,
+        )
+        if not normalized_keylog:
+            raise HTTPError("请输入 TLS keylog、本地文件路径，或选择一个 keylog 文件")
+
+        key_hash = hashlib.sha1(normalized_keylog.encode("utf-8", errors="ignore")).hexdigest()[:12]
+        with job.lock:
+            current_task = job.tls_decrypt
+            if current_task and current_task.status == "running":
+                if current_task.key_hash == key_hash:
+                    return {"ok": True, "task": self._tls_decrypt_snapshot(current_task)}
+                raise HTTPError("已有 TLS 解密任务在运行，请等待当前任务完成")
+
+            if current_task and current_task.status == "completed" and current_task.key_hash == key_hash and current_task.result:
+                return {"ok": True, "task": self._tls_decrypt_snapshot(current_task)}
+
+            total_packets = self._tls_decrypt_total_packets(job)
+            started_at = _now_iso()
+            task = TLSDecryptExecution(
+                task_id=uuid4().hex,
+                key_hash=key_hash,
+                status="running",
+                stage="initializing",
+                message="已接收 keylog，准备重新解析 TLS / HTTP 流量",
+                keylog_source=source_meta,
+                created_at=started_at,
+                started_at=started_at,
+                updated_at=started_at,
+                progress=_module_progress_payload(processed=0, total=total_packets),
+            )
+            job.tls_decrypt = task
+
+        worker = Thread(
+            target=self._run_tls_decrypt_task,
+            args=(job_id, task.task_id, normalized_keylog, source_meta),
+            daemon=True,
+            name=f"tls-decrypt-{job_id[:6]}",
+        )
+        worker.start()
+        return {"ok": True, "task": self._tls_decrypt_snapshot(task)}
+
+    def tls_decrypt_status(self, job_id: str) -> dict:
+        job = self._get_job(job_id)
+        with job.lock:
+            task = job.tls_decrypt
+            return {"ok": True, "task": self._tls_decrypt_snapshot(task)}
+
+    def _run_tls_decrypt_task(
+        self,
+        job_id: str,
+        task_id: str,
+        normalized_keylog: str,
+        source_meta: dict,
+    ) -> None:
+        job = self._get_job(job_id)
+
+        def update_progress(stage: str, processed: int, total: int | None, message: str) -> None:
+            with job.lock:
+                task = job.tls_decrypt
+                if task is None or task.task_id != task_id or task.status != "running":
+                    return
+                task.stage = stage
+                task.message = message
+                task.updated_at = _now_iso()
+                task.progress = _module_progress_payload(processed=processed, total=total)
+
+        total_packets = self._tls_decrypt_total_packets(job)
+        update_progress("initializing", 0, total_packets, "正在校验 keylog 并准备 TLS 解密任务")
+
+        try:
+            result = self._parse_tls_keylog_report(
+                job=job,
+                normalized_keylog=normalized_keylog,
+                source_meta=source_meta,
+                progress_callback=update_progress,
+            )
+        except Exception as exc:
+            with job.lock:
+                task = job.tls_decrypt
+                if task is None or task.task_id != task_id:
+                    return
+                task.status = "error"
+                task.stage = "error"
+                task.message = "TLS 解密失败"
+                task.error = str(exc)
+                task.finished_at = _now_iso()
+                task.updated_at = task.finished_at
+            return
+
+        with job.lock:
+            task = job.tls_decrypt
+            if task is None or task.task_id != task_id:
+                return
+            task.status = "completed"
+            task.stage = "completed"
+            task.message = "TLS 解密完成"
+            task.result = result
+            task.finished_at = _now_iso()
+            task.updated_at = task.finished_at
+            total = task.progress.get("total")
+            processed = int(result.get("summary", {}).get("packet_count") or task.progress.get("processed") or 0)
+            task.progress = _module_progress_payload(processed=processed, total=total or processed)
+
+        if self._publish_tls_http_module_result(
+            job=job,
+            tls_result=result,
+            started_at=task.started_at,
+            finished_at=task.finished_at,
+        ):
+            self._persist_job(job)
+
+    def _parse_tls_keylog_report(
+        self,
+        *,
+        job: AnalysisJob,
+        normalized_keylog: str,
+        source_meta: dict,
+        progress_callback: Callable[[str, int, int | None, str], None] | None,
+    ) -> dict:
+        with job.lock:
+            pcap_path = str(job.temp_path)
+            max_packets = job.max_packets
+            project_dir = str(job.project_dir or "")
+            total_packets = self._tls_decrypt_total_packets(job)
+
+        if progress_callback is not None:
+            progress_callback("packet_read", 0, total_packets, "正在使用 TLS keylog 重新读取 pcap")
+
+        service = build_default_pipeline_service()
+        if project_dir:
+            service.http_export_root = Path(project_dir) / "artifacts"
+        report = service.analyze_file(
+            pcap_path,
+            max_packets=max_packets,
+            enabled_protocols=["TLS", "HTTP"],
+            enabled_attacks=[],
+            tls_keylog_text=normalized_keylog,
+            progress_callback=(
+                (lambda stage, processed, total: progress_callback(
+                    stage,
+                    processed,
+                    total,
+                    "正在使用 TLS keylog 重新读取 pcap" if stage == "packet_read" else "正在汇总解密后的 TLS / HTTP 结果",
+                ))
+                if progress_callback is not None
+                else None
+            ),
+            progress_total=total_packets,
+        )
+
+        if progress_callback is not None:
+            progress_callback(
+                "finalizing",
+                int(report.packet_count or 0),
+                total_packets or int(report.packet_count or 0),
+                "正在提取 TLS / HTTP 结果并整理命中信息",
+            )
+
+        detailed_views = report.stats.get("detailed_views", {})
+        tls_detail = dict(detailed_views.get("TLS") or {})
+        http_detail = dict(detailed_views.get("HTTP") or {})
+        requests = list(http_detail.get("requests") or [])
+        uploads = list(http_detail.get("uploads") or [])
+        flag_hits = self._extract_tls_flag_hits(requests=requests, uploads=uploads)
+        return {
+            "keylog_source": source_meta,
+            "summary": {
+                "packet_count": report.packet_count,
+                "protocol_event_count": report.stats.get("protocol_event_count", 0),
+                "tls_session_count": int(tls_detail.get("session_count") or 0),
+                "http_request_count": int(http_detail.get("request_count") or 0),
+                "http_upload_count": int(http_detail.get("upload_count") or 0),
+                "flag_hit_count": len(flag_hits),
+            },
+            "tls_detail": tls_detail,
+            "http_detail": http_detail,
+            "flag_hits": flag_hits,
+        }
+
+    def _publish_tls_http_module_result(
+        self,
+        *,
+        job: AnalysisJob,
+        tls_result: dict,
+        started_at: str | None,
+        finished_at: str | None,
+    ) -> bool:
+        module_result = self._build_tls_http_module_result(tls_result)
+        module_key = "protocol:HTTP"
+
+        with job.lock:
+            module = job.modules.get(module_key)
+            if module is None:
+                module = ModuleExecution(module_type="protocol", module_name="HTTP")
+                job.modules[module_key] = module
+
+            module.run_id += 1
+            module.status = "completed"
+            module.started_at = started_at or module.started_at or module.created_at
+            module.finished_at = finished_at or _now_iso()
+            module.error = None
+            module.result = module_result
+            module.stop_requested = False
+            module.process = None
+            module.watcher = None
+            module.result_path = None
+            module.progress_path = None
+            job.bump_revision()
+
+        return True
+
+    def _build_tls_http_module_result(self, tls_result: dict) -> dict:
+        http_detail = dict(tls_result.get("http_detail") or {})
+        requests = list(http_detail.get("requests") or [])
+        uploads = list(http_detail.get("uploads") or [])
+        upload_points = list(http_detail.get("upload_points") or [])
+        site_pages = list(http_detail.get("site_pages") or [])
+        http_request_count = int(http_detail.get("request_count") or tls_result.get("summary", {}).get("http_request_count") or 0)
+        http_upload_count = int(http_detail.get("upload_count") or tls_result.get("summary", {}).get("http_upload_count") or len(uploads) or 0)
+
+        http_detail["requests"] = requests
+        http_detail["uploads"] = uploads
+        http_detail["upload_points"] = upload_points
+        http_detail["site_pages"] = site_pages
+        http_detail["request_count"] = http_request_count
+        http_detail["upload_count"] = http_upload_count
+
+        return {
+            "module": {"type": "protocol", "name": "HTTP"},
+            "summary": {
+                "packet_count": int(tls_result.get("summary", {}).get("packet_count") or 0),
+                "protocol_event_count": http_request_count,
+                "alert_count": 0,
+            },
+            "detail": http_detail,
+            "meta": {
+                "source": "tls_decrypt",
+                "label": "TLS 解密重跑",
+                "keylog_source": tls_result.get("keylog_source") or {},
+                "tls_summary": {
+                    "tls_session_count": int(tls_result.get("summary", {}).get("tls_session_count") or 0),
+                    "flag_hit_count": int(tls_result.get("summary", {}).get("flag_hit_count") or 0),
+                    "http_upload_count": http_upload_count,
+                },
+                "flag_hits": list(tls_result.get("flag_hits") or []),
+            },
+            "debug": {
+                "tls_decrypt": {
+                    "http_request_count": http_request_count,
+                    "http_upload_count": http_upload_count,
+                }
+            },
+        }
+
+    def _tls_decrypt_total_packets(self, job: AnalysisJob) -> int | None:
+        for value in (job.packet_count, job.source_packet_count, job.target_packet_count):
+            if isinstance(value, int) and value > 0:
+                return value
+        return None
+
+    def _tls_decrypt_snapshot(self, task: TLSDecryptExecution | None) -> dict | None:
+        if task is None:
+            return None
+        return {
+            "task_id": task.task_id,
+            "status": task.status,
+            "stage": task.stage,
+            "message": task.message,
+            "keylog_source": task.keylog_source,
+            "created_at": task.created_at,
+            "started_at": task.started_at,
+            "finished_at": task.finished_at,
+            "updated_at": task.updated_at,
+            "elapsed_ms": _elapsed_ms(task.started_at, task.finished_at),
+            "progress": dict(task.progress or {}),
+            "error": task.error,
+            "result": task.result,
+        }
+
+    def _extract_tls_flag_hits(self, *, requests: list[dict], uploads: list[dict]) -> list[str]:
+        hits: list[str] = []
+        seen: set[str] = set()
+        for row in [*(requests or []), *(uploads or [])]:
+            text = "\n".join(
+                [
+                    str(row.get("uri") or ""),
+                    str(row.get("payload_preview") or ""),
+                    str(row.get("preview") or ""),
+                    str(row.get("upload_summary") or ""),
+                ]
+            )
+            for match in re.findall(r"flag\{[^}\r\n]{1,256}\}", text, flags=re.IGNORECASE):
+                flag = str(match).strip()
+                if not flag or flag in seen:
+                    continue
+                seen.add(flag)
+                hits.append(flag)
+        return hits
+
     def _collect_godzilla_session_contexts(self, module_result: dict) -> list[dict]:
         alerts = module_result.get("alerts") or []
-        rows: list[dict] = []
-        seen: set[tuple[str, str, str, str]] = set()
+        rows_by_signature: dict[tuple[str, str, str, str], dict] = {}
         for alert in alerts:
             evidence = alert.get("evidence") or {}
             if str(evidence.get("stage") or "") != "request":
@@ -1318,18 +1785,293 @@ class JobManager:
             if not left or not right or not uri:
                 continue
             signature = (uri, pass_param, left, right)
-            if signature in seen:
-                continue
-            seen.add(signature)
-            rows.append(
-                {
+            request_packet_index = (alert.get("packet_indexes") or [None])[0]
+            loader_param = str(evidence.get("loader_param") or "").strip()
+            payload_name = str(evidence.get("payload_name") or "").strip()
+            session_key = str(evidence.get("session_key") or "").strip()
+
+            row = rows_by_signature.get(signature)
+            if row is None:
+                rows_by_signature[signature] = {
                     "uri": uri,
                     "pass_param": pass_param,
                     "marker_left": left,
                     "marker_right": right,
-                    "request_packet_index": (alert.get("packet_indexes") or [None])[0],
+                    "loader_param": loader_param or None,
+                    "payload_name": payload_name or None,
+                    "session_key": session_key or None,
+                    "request_packet_index": request_packet_index,
+                }
+                continue
+
+            if not row.get("loader_param") and loader_param:
+                row["loader_param"] = loader_param
+            if not row.get("payload_name") and payload_name:
+                row["payload_name"] = payload_name
+            if not row.get("session_key") and session_key:
+                row["session_key"] = session_key
+            current_index = self._safe_int(row.get("request_packet_index"))
+            next_index = self._safe_int(request_packet_index)
+            if current_index is None or (next_index is not None and next_index < current_index):
+                row["request_packet_index"] = request_packet_index
+
+        rows = list(rows_by_signature.values())
+        rows.sort(key=lambda item: self._safe_int(item.get("request_packet_index")) or -1)
+        return rows
+
+    def _collect_sqli_bool_contexts(self, module_result: dict) -> list[dict]:
+        alerts = module_result.get("alerts") or []
+        rows_by_signature: dict[tuple[str, str, str, str, str], dict] = {}
+        seen_entries: set[tuple[tuple[str, str, str, str, str], int, int, int, str]] = set()
+
+        for alert in alerts:
+            evidence = alert.get("evidence") or {}
+            if str(evidence.get("sqli_type") or "") != "bool_blind":
+                continue
+            method = str(evidence.get("method") or "").strip().upper()
+            uri_path = self._normalize_http_path(str(evidence.get("uri_path") or evidence.get("uri") or ""))
+            param_location = str(evidence.get("param_location") or "").strip() or "query"
+            param_name = str(evidence.get("param_name") or "").strip()
+            target_expression = str(evidence.get("target_expression") or "").strip()
+            if not uri_path or not param_name:
+                continue
+
+            signature = (method, uri_path, param_location, param_name, target_expression)
+            context = rows_by_signature.get(signature)
+            if context is None:
+                context = {
+                    "method": method,
+                    "uri_path": uri_path,
+                    "uri": str(evidence.get("uri") or "").strip() or uri_path,
+                    "host": str(evidence.get("host") or "").strip() or None,
+                    "param_location": param_location,
+                    "param_name": param_name,
+                    "injection_point": str(evidence.get("injection_point") or "").strip() or f"{method} {uri_path} :: {param_location}.{param_name}",
+                    "target_expression": target_expression or None,
+                    "entries": [],
+                }
+                rows_by_signature[signature] = context
+
+            request_packet_index = self._safe_int(evidence.get("request_packet_index"))
+            response_packet_index = self._safe_int(evidence.get("response_packet_index"))
+            position = self._safe_int(evidence.get("position"))
+            candidate_char = str(evidence.get("candidate_char") or "")
+            entry_signature = (
+                signature,
+                request_packet_index if request_packet_index is not None else -1,
+                response_packet_index if response_packet_index is not None else -1,
+                position if position is not None else -1,
+                candidate_char,
+            )
+            if entry_signature in seen_entries:
+                continue
+            seen_entries.add(entry_signature)
+
+            context["entries"].append(
+                {
+                    "request_packet_index": request_packet_index,
+                    "response_packet_index": response_packet_index,
+                    "request_frame_number": self._safe_int(evidence.get("request_frame_number")),
+                    "response_frame_number": self._safe_int(evidence.get("response_frame_number")),
+                    "position": position,
+                    "candidate_char": candidate_char,
+                    "response_length": self._safe_int(evidence.get("response_length")),
+                    "response_status_code": str(evidence.get("response_status_code") or "").strip() or None,
+                    "response_preview": str(evidence.get("response_preview") or "").strip(),
+                    "response_bool_hint": str(evidence.get("response_bool_hint") or "").strip() or None,
+                    "bool_expression": str(evidence.get("bool_expression") or "").strip(),
                 }
             )
+
+        rows = list(rows_by_signature.values())
+        for row in rows:
+            entries = list(row.get("entries") or [])
+            entries.sort(
+                key=lambda item: (
+                    self._safe_int(item.get("position")) or -1,
+                    self._safe_int(item.get("request_packet_index")) or -1,
+                )
+            )
+            row["entries"] = entries
+            row["entry_count"] = len(entries)
+        rows.sort(key=lambda item: str(item.get("injection_point") or ""))
+        return rows
+
+    def _parse_sqli_bool_context(
+        self,
+        context: dict,
+        *,
+        true_marker: str,
+        response_texts: dict[int, str],
+    ) -> dict:
+        entries = list(context.get("entries") or [])
+        entries_by_position: dict[int, list[dict]] = {}
+        for entry in entries:
+            position = self._safe_int(entry.get("position"))
+            if position is None or position <= 0:
+                continue
+            entries_by_position.setdefault(position, []).append(entry)
+
+        length_info = self._infer_sqli_true_lengths(entries)
+        true_lengths = set(length_info.get("true_lengths") or [])
+        restored_chars: list[str] = []
+        resolved_positions: list[dict] = []
+        stop_reason = "completed"
+
+        for position in sorted(entries_by_position):
+            candidates = sorted(
+                entries_by_position[position],
+                key=lambda item: (
+                    self._safe_int(item.get("request_packet_index")) or -1,
+                    str(item.get("candidate_char") or ""),
+                ),
+            )
+            if true_marker:
+                true_candidates = [
+                    item
+                    for item in candidates
+                    if true_marker and true_marker in str(
+                        response_texts.get(
+                            (
+                                self._safe_int(item.get("response_packet_index"))
+                                if self._safe_int(item.get("response_packet_index")) is not None
+                                else -1
+                            ),
+                            "",
+                        )
+                    )
+                ]
+            else:
+                true_candidates = [
+                    item
+                    for item in candidates
+                    if self._safe_int(item.get("response_length")) in true_lengths
+                ]
+
+            resolved_char = str(true_candidates[0].get("candidate_char") or "") if len(true_candidates) == 1 else ""
+            resolved_positions.append(
+                {
+                    "position": position,
+                    "candidate_count": len(candidates),
+                    "true_candidate_count": len(true_candidates),
+                    "resolved": len(true_candidates) == 1,
+                    "resolved_char": resolved_char,
+                    "max_response_length": max(
+                        [self._safe_int(item.get("response_length")) or 0 for item in candidates],
+                        default=0,
+                    ),
+                    "true_request_packet_index": (true_candidates[0].get("request_packet_index") if len(true_candidates) == 1 else None),
+                    "true_response_packet_index": (true_candidates[0].get("response_packet_index") if len(true_candidates) == 1 else None),
+                    "true_response_length": (true_candidates[0].get("response_length") if len(true_candidates) == 1 else None),
+                    "true_response_preview": str((true_candidates[0].get("response_preview") if len(true_candidates) == 1 else "") or ""),
+                    "candidate_chars": [str(item.get("candidate_char") or "") for item in candidates[:12]],
+                }
+            )
+
+            if len(true_candidates) == 1:
+                restored_chars.append(resolved_char)
+                continue
+            if restored_chars:
+                stop_reason = "ambiguous_true_candidate" if len(true_candidates) > 1 else "no_true_candidate"
+                break
+
+        restored_text = "".join(restored_chars)
+        return {
+            "method": context.get("method"),
+            "uri_path": context.get("uri_path"),
+            "uri": context.get("uri"),
+            "host": context.get("host"),
+            "param_location": context.get("param_location"),
+            "param_name": context.get("param_name"),
+            "injection_point": context.get("injection_point"),
+            "target_expression": context.get("target_expression"),
+            "entry_count": len(entries),
+            "position_count": len(entries_by_position),
+            "resolved_position_count": len(restored_text),
+            "restored_text": restored_text,
+            "stop_reason": stop_reason,
+            "analysis_mode": "marker_text" if true_marker else "response_length",
+            "true_marker": true_marker,
+            "true_length_values": sorted(true_lengths),
+            "length_strategy": str(length_info.get("strategy") or ""),
+            "length_split_gap": length_info.get("split_gap"),
+            "response_length_distribution": list(length_info.get("distribution") or []),
+            "positions": resolved_positions,
+        }
+
+    def _infer_sqli_true_lengths(self, entries: list[dict]) -> dict:
+        counter: Counter[int] = Counter()
+        for entry in entries:
+            length = self._safe_int(entry.get("response_length"))
+            if length is not None and length > 0:
+                counter[length] += 1
+
+        lengths = sorted(counter.keys())
+        if not lengths:
+            return {"strategy": "empty", "true_lengths": [], "distribution": []}
+        if len(lengths) == 1:
+            return {
+                "strategy": "single_length",
+                "true_lengths": [lengths[0]],
+                "distribution": [(str(length), count) for length, count in counter.most_common()],
+            }
+
+        gaps = [
+            (lengths[idx + 1] - lengths[idx], lengths[idx], lengths[idx + 1])
+            for idx in range(len(lengths) - 1)
+        ]
+        split_gap, lower, upper = max(gaps, key=lambda item: item[0])
+        if split_gap >= 2:
+            return {
+                "strategy": "gap_split",
+                "true_lengths": [value for value in lengths if value >= upper],
+                "split_gap": split_gap,
+                "distribution": [(str(length), count) for length, count in counter.most_common()],
+            }
+
+        max_length = max(lengths)
+        return {
+            "strategy": "max_window",
+            "true_lengths": [value for value in lengths if value >= max_length - 1],
+            "split_gap": split_gap,
+            "distribution": [(str(length), count) for length, count in counter.most_common()],
+        }
+
+    def _load_http_payloads_by_packet_indexes(self, *, db_path: str, packet_indexes: list[int]) -> dict[int, str]:
+        indexes = sorted({int(index) for index in packet_indexes if isinstance(index, int) and index >= 0})
+        if not indexes:
+            return {}
+
+        conn = sqlite3.connect(db_path)
+        try:
+            rows: dict[int, str] = {}
+            batch_size = 400
+            for offset in range(0, len(indexes), batch_size):
+                batch = indexes[offset: offset + batch_size]
+                placeholders = ",".join("?" for _ in batch)
+                cursor = conn.execute(
+                    f"SELECT idx, packet_json FROM packets WHERE idx IN ({placeholders})",
+                    batch,
+                )
+                for idx, packet_json in cursor.fetchall():
+                    payload = json.loads(packet_json)
+                    packet = PacketRecord(**payload)
+                    http = packet.raw.get("http", {}) if isinstance(packet.raw, dict) else {}
+                    body = str(packet.payload_text or http.get("file_data") or "")
+                    rows[int(idx)] = body
+            return rows
+        finally:
+            conn.close()
+
+    def _collect_godzilla_detected_keys(self, contexts: list[dict]) -> list[str]:
+        rows: list[str] = []
+        seen: set[str] = set()
+        for context in contexts:
+            value = str(context.get("session_key") or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            rows.append(value)
         return rows
 
     def _extract_godzilla_session_transactions(self, *, db_path: str, uri: str, pass_param: str) -> list[dict]:
@@ -1346,7 +2088,7 @@ class JobManager:
                 request_uri = self._normalize_http_path(str(http.get("request_uri") or http.get("request_full_uri") or ""))
                 if request_uri != target_uri:
                     continue
-                request_body = str(http.get("file_data") or packet.payload_text or "")
+                request_body = str(packet.payload_text or http.get("file_data") or "")
                 params = parse_qs(request_body, keep_blank_values=True)
                 if pass_param not in params:
                     continue
@@ -1368,7 +2110,7 @@ class JobManager:
             transaction = {
                 **pending,
                 "response_packet_index": packet.index,
-                "response_body": str(http.get("file_data") or packet.payload_text or ""),
+                "response_body": str(packet.payload_text or http.get("file_data") or ""),
             }
             transactions.append(transaction)
             requests.pop(request_in, None)
@@ -1438,7 +2180,13 @@ class JobManager:
             rows.append(candidate)
         return rows
 
-    def _expand_godzilla_key_candidates(self, values: list[str]) -> list[dict[str, str]]:
+    def _expand_godzilla_key_candidates(
+        self,
+        values: list[str],
+        *,
+        raw_strategy_label: str = "原始输入",
+        derived_strategy_prefix: str = "",
+    ) -> list[dict[str, str]]:
         rows: list[dict[str, str]] = []
         seen: set[str] = set()
 
@@ -1460,13 +2208,29 @@ class JobManager:
             source = str(raw or "").strip()
             if not source:
                 continue
-            append(source, source=source, strategy="raw", strategy_label="原始输入")
+            append(source, source=source, strategy="raw", strategy_label=raw_strategy_label)
 
             digest = hashlib.md5(source.encode("utf-8", errors="ignore")).hexdigest().lower()
-            append(digest[:16], source=source, strategy="md5_first16", strategy_label="MD5 前 16 位")
-            append(digest, source=source, strategy="md5_full32", strategy_label="完整 MD5 32 位")
-            append(digest[16:], source=source, strategy="md5_last16", strategy_label="MD5 后 16 位")
+            prefix = f"{derived_strategy_prefix} " if derived_strategy_prefix else ""
+            append(digest[:16], source=source, strategy="md5_first16", strategy_label=f"{prefix}MD5 前 16 位")
+            append(digest, source=source, strategy="md5_full32", strategy_label=f"{prefix}完整 MD5 32 位")
+            append(digest[16:], source=source, strategy="md5_last16", strategy_label=f"{prefix}MD5 后 16 位")
 
+        return rows
+
+    def _merge_godzilla_key_candidates(
+        self,
+        primary: list[dict[str, str]],
+        extra: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for candidate in [*(primary or []), *(extra or [])]:
+            value = str(candidate.get("value") or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            rows.append(candidate)
         return rows
 
     def _preferred_godzilla_key_candidate(self, candidates: list[dict[str, str]]) -> dict[str, str] | None:
@@ -1490,15 +2254,7 @@ class JobManager:
         return bool(text) and len(text) in {16, 32} and all(ch in "0123456789abcdefABCDEF" for ch in text)
 
     def _normalize_local_input_path(self, raw_path: str) -> Path | None:
-        text = str(raw_path or "").strip().strip('"').strip("'")
-        if not text:
-            return None
-        win_match = text[:3] if len(text) >= 3 else ""
-        if len(text) >= 3 and text[1:3] in {":\\", ":/"} and text[0].isalpha():
-            drive = text[0].lower()
-            suffix = text[3:].replace("\\", "/")
-            return Path(f"/mnt/{drive}/{suffix}")
-        return Path(text).expanduser()
+        return normalize_local_input_path(raw_path)
 
     def _normalize_http_path(self, raw_uri: str) -> str:
         parsed = urlsplit(str(raw_uri or ""))
@@ -1694,7 +2450,7 @@ class JobManager:
         last_revision_refresh = time.monotonic()
         with job.lock:
             job.parse_mode = "sequential"
-        for packet in parser.parse_file(job.temp_path):
+        for packet in parser.parse_file(job.temp_path, tls_keylog_text=job.tls_keylog_text):
             with job.lock:
                 if job.max_packets is not None and parsed_count >= job.max_packets:
                     break
@@ -1770,6 +2526,7 @@ class JobManager:
                     split_file,
                     progress_callback=lambda delta, target_job=job: self._increment_parse_progress(target_job, delta),
                     output_path=output_path,
+                    tls_keylog_text=job.tls_keylog_text,
                 )
                 : chunk_index
                 for chunk_index, (split_file, output_path) in enumerate(zip(split_files, chunk_output_paths))

@@ -212,20 +212,34 @@ async def cleanup_projects(payload: dict | None = Body(default=None)):
 async def start_job(
     pcap_file: UploadFile = File(...),
     max_packets: int | None = Form(default=None),
+    tls_key_text: str | None = Form(default=None),
+    tls_key_file: UploadFile | None = File(default=None),
 ):
     filename, temp_path, source_size_bytes = await _save_upload_temp(pcap_file)
-    job_id = job_manager.create_job(
-        filename=filename,
-        temp_path=temp_path,
-        max_packets=max_packets,
-        source_size_bytes=source_size_bytes,
-    )
-    return {
-        "ok": True,
-        "job_id": job_id,
-        "project_id": job_id,
-        "filename": filename,
-    }
+    tls_key_file_name = tls_key_file.filename if tls_key_file and tls_key_file.filename else None
+    tls_key_file_bytes = await tls_key_file.read() if tls_key_file is not None else None
+    try:
+        job_id = job_manager.create_job(
+            filename=filename,
+            temp_path=temp_path,
+            max_packets=max_packets,
+            source_size_bytes=source_size_bytes,
+            tls_keylog_text=tls_key_text,
+            tls_keylog_file_name=tls_key_file_name,
+            tls_keylog_file_bytes=tls_key_file_bytes,
+        )
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "project_id": job_id,
+            "filename": filename,
+        }
+    except HTTPError as exc:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/jobs/{job_id}/status")
@@ -261,6 +275,57 @@ async def parse_godzilla_webshell_key(
             key_file_bytes=key_file_bytes,
         )
         return {"ok": True, "result": result}
+    except HTTPError as exc:
+        message = str(exc)
+        code = 404 if "任务不存在" in message else 400
+        raise HTTPException(status_code=code, detail=message) from exc
+
+
+@app.post("/api/jobs/{job_id}/sqli/bool/parse")
+async def parse_sqli_bool(
+    job_id: str,
+    true_marker: str | None = Form(default=None),
+):
+    try:
+        result = await run_in_threadpool(
+            job_manager.parse_sql_injection_bool,
+            job_id,
+            true_marker=true_marker,
+        )
+        return {"ok": True, "result": result}
+    except HTTPError as exc:
+        message = str(exc)
+        code = 404 if "任务不存在" in message else 400
+        raise HTTPException(status_code=code, detail=message) from exc
+
+
+@app.post("/api/jobs/{job_id}/tls/decrypt")
+async def parse_tls_keylog(
+    job_id: str,
+    key_text: str | None = Form(default=None),
+    key_file: UploadFile | None = File(default=None),
+):
+    key_file_name = key_file.filename if key_file and key_file.filename else None
+    key_file_bytes = await key_file.read() if key_file is not None else None
+    try:
+        result = await run_in_threadpool(
+            job_manager.start_tls_decrypt_task,
+            job_id,
+            key_text=key_text,
+            key_file_name=key_file_name,
+            key_file_bytes=key_file_bytes,
+        )
+        return result
+    except HTTPError as exc:
+        message = str(exc)
+        code = 404 if "任务不存在" in message else 400
+        raise HTTPException(status_code=code, detail=message) from exc
+
+
+@app.get("/api/jobs/{job_id}/tls/decrypt/status")
+async def tls_decrypt_status(job_id: str):
+    try:
+        return job_manager.tls_decrypt_status(job_id)
     except HTTPError as exc:
         message = str(exc)
         code = 404 if "任务不存在" in message else 400

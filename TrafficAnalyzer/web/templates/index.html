@@ -3,81 +3,207 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TrafficAnalyzer Workbench</title>
+  <title>流量分析平台</title>
   <style>
     :root {
-      --bg1: #081427;
-      --bg2: #0c3049;
-      --panel: #10213a;
-      --panel-border: rgba(255, 255, 255, .14);
-      --text: #e2ecfb;
-      --muted: #9db4d4;
-      --line: rgba(255, 255, 255, .12);
-      --card: #152d4a;
-      --ok: #22c55e;
-      --warn: #f59e0b;
-      --err: #ef4444;
-      --info: #38bdf8;
+      color-scheme: dark;
+      --bg-primary: #0b0c0e;
+      --bg-secondary: #141619;
+      --bg-tertiary: #1f2024;
+      --border-subtle: #2a2d32;
+      --border-emphasis: #3d4148;
+      --text-primary: #e8eaed;
+      --text-secondary: #9aa0a6;
+      --text-muted: #5f6368;
+      --accent-blue: #4c9aff;
+      --accent-cyan: #00b8d9;
+      --accent-purple: #6554c0;
+      --status-success: #36b37e;
+      --status-warning: #ffab00;
+      --status-error: #ff5630;
+      --status-info: #00b8d9;
+
+      /* Legacy aliases for compatibility */
+      --bg1: var(--bg-primary);
+      --bg2: var(--bg-secondary);
+      --panel: var(--bg-tertiary);
+      --panel-strong: var(--bg-secondary);
+      --panel-soft: var(--bg-tertiary);
+      --panel-border: var(--border-subtle);
+      --panel-border-strong: var(--border-emphasis);
+      --text: var(--text-primary);
+      --muted: var(--text-secondary);
+      --line: var(--border-subtle);
+      --card: var(--bg-tertiary);
+      --accent: var(--accent-blue);
+      --accent-strong: var(--accent-cyan);
+      --accent-soft: rgba(76, 154, 255, .14);
+      --ok: var(--status-success);
+      --warn: var(--status-warning);
+      --err: var(--status-error);
+      --info: var(--status-info);
+      --shadow-lg: 0 2px 8px rgba(0, 0, 0, .3);
+      --shadow-sm: 0 1px 4px rgba(0, 0, 0, .2);
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 8% 12%, rgba(30, 64, 175, .45), transparent 38%),
-        radial-gradient(circle at 92% 88%, rgba(14, 165, 233, .28), transparent 34%),
-        linear-gradient(145deg, var(--bg1), var(--bg2));
-      padding: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
       overflow: hidden;
     }
+    a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    button,
+    input,
+    select {
+      transition: all .2s ease;
+    }
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    summary:focus-visible {
+      outline: 2px solid var(--accent-blue);
+      outline-offset: 2px;
+    }
+
+    /* Sidebar Navigation */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 48px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+    }
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      padding: 8px 0;
+    }
+    .sidebar-btn {
+      width: 48px;
+      height: 48px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 0;
+    }
+    .sidebar-btn:hover {
+      background: rgba(76, 154, 255, .08);
+      color: var(--text-primary);
+    }
+    .sidebar-btn.active {
+      color: var(--accent-blue);
+      background: rgba(76, 154, 255, .12);
+    }
+    .sidebar-btn.active::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 8px;
+      bottom: 8px;
+      width: 3px;
+      background: var(--accent-blue);
+      border-radius: 0 2px 2px 0;
+    }
+    .sidebar-btn svg {
+      width: 24px;
+      height: 24px;
+    }
+
     .app-shell {
-      height: calc(100vh - 20px);
-      max-width: 1860px;
-      margin: 0 auto;
+      height: 100vh;
+      margin-left: 48px;
       display: grid;
       grid-template-rows: auto 8px minmax(0, 1fr);
       gap: 0;
     }
     .panel {
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
       border-radius: 12px;
-      box-shadow: 0 12px 26px rgba(0, 0, 0, .22);
+      box-shadow: var(--shadow-lg);
       min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
     .panel-hd {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--line);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: rgba(2, 6, 23, .3);
+      gap: 12px;
+      background: var(--bg-secondary);
       flex: 0 0 auto;
     }
     .panel-hd h2, .panel-hd h3 {
       margin: 0;
-      font-size: 15px;
-      letter-spacing: .25px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0;
+      color: var(--text-primary);
     }
     .panel-bd {
-      padding: 10px 12px;
+      padding: 16px 20px;
       flex: 1;
       min-height: 0;
       overflow: auto;
     }
     .top-panel {
-      min-height: 186px;
+      min-height: 60px;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      border-top: none;
+    }
+    .top-panel .panel-hd {
+      padding: 12px 20px;
+      background: var(--bg-secondary);
     }
     .top-panel .panel-bd {
-      display: grid;
-      grid-template-rows: auto auto auto minmax(64px, auto);
-      gap: 7px;
-      overflow: auto;
+      display: none;
+    }
+    .top-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .top-toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+    }
+    .top-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
     }
     .run-grid {
       display: grid;
@@ -85,42 +211,96 @@
       gap: 8px;
       align-items: end;
     }
-    .field { display: grid; gap: 5px; }
-    .field label { font-size: 12px; color: var(--muted); }
+    .field { display: grid; gap: 6px; }
+    .field label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
     input[type="file"], input[type="number"] {
       width: 100%;
-      padding: 8px 10px;
-      border: 1px solid var(--line);
+      padding: 10px 12px;
+      border: 1px solid var(--border-subtle);
       border-radius: 8px;
-      background: rgba(2, 6, 23, .35);
-      color: var(--text);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
       font-size: 13px;
     }
-    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    input[type="file"]:hover, input[type="number"]:hover {
+      border-color: var(--border-emphasis);
+    }
+    input[type="file"]:focus, input[type="number"]:focus {
+      border-color: var(--accent-blue);
+      background: var(--bg-tertiary);
+    }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .btn {
-      border: 1px solid rgba(125, 211, 252, .38);
-      border-radius: 9px;
-      padding: 8px 12px;
+      border: 1px solid var(--accent-blue);
+      border-radius: 8px;
+      padding: 10px 16px;
       cursor: pointer;
       color: #fff;
       font-size: 13px;
-      background: linear-gradient(120deg, #0f172a, #1d4ed8);
+      font-weight: 600;
+      background: var(--accent-blue);
+      box-shadow: var(--shadow-sm);
+    }
+    .btn:hover:not(:disabled) {
+      background: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+      transform: translateY(-1px);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
     .btn.secondary {
-      background: rgba(2, 6, 23, .38);
-      border-color: var(--line);
+      background: var(--bg-tertiary);
+      border-color: var(--border-emphasis);
+      color: var(--text-primary);
+    }
+    .btn.secondary:hover:not(:disabled) {
+      background: var(--bg-secondary);
+      border-color: var(--border-emphasis);
     }
     .status {
       display: inline-flex;
+      align-items: center;
+      gap: 8px;
       border: 1px solid transparent;
-      border-radius: 999px;
-      padding: 4px 10px;
+      border-radius: 6px;
+      padding: 6px 12px;
       font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
     }
-    .status.wait { border-color: rgba(56, 189, 248, .45); color: #7dd3fc; background: rgba(56, 189, 248, .12); }
-    .status.run { border-color: rgba(245, 158, 11, .45); color: #fcd34d; background: rgba(245, 158, 11, .12); }
-    .status.ok { border-color: rgba(34, 197, 94, .45); color: #86efac; background: rgba(34, 197, 94, .12); }
-    .status.err { border-color: rgba(239, 68, 68, .45); color: #fca5a5; background: rgba(239, 68, 68, .12); }
+    .status.wait {
+      border-color: var(--status-info);
+      color: var(--status-info);
+      background: rgba(0, 184, 217, .1);
+    }
+    .status.run {
+      border-color: var(--status-warning);
+      color: var(--status-warning);
+      background: rgba(255, 171, 0, .1);
+    }
+    .status.ok {
+      border-color: var(--status-success);
+      color: var(--status-success);
+      background: rgba(54, 179, 126, .1);
+    }
+    .status.err {
+      border-color: var(--status-error);
+      color: var(--status-error);
+      background: rgba(255, 86, 48, .1);
+    }
+    .status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
     .top-meta {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -128,47 +308,74 @@
       font-size: 12px;
     }
     .meta-item {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border-subtle);
       border-radius: 8px;
-      padding: 6px 8px;
-      background: rgba(2, 6, 23, .25);
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      font-size: 12px;
     }
-    .meta-item .k { color: var(--muted); }
-    .meta-item .v { margin-top: 3px; word-break: break-all; }
+    .meta-item .k {
+      color: var(--text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .meta-item .v {
+      margin-top: 6px;
+      word-break: break-all;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 13px;
+    }
     .steps {
       list-style: none;
       padding: 0;
       margin: 0;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 6px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
     }
     .steps li {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border-subtle);
       border-radius: 8px;
-      padding: 6px 7px;
+      padding: 8px 10px;
       font-size: 12px;
-      background: rgba(2, 6, 23, .3);
+      background: var(--bg-tertiary);
       display: flex;
       justify-content: space-between;
-      gap: 6px;
+      align-items: center;
+      gap: 8px;
     }
-    .steps li.running { border-color: rgba(245, 158, 11, .65); }
-    .steps li.done { border-color: rgba(34, 197, 94, .6); }
-    .steps li.error { border-color: rgba(239, 68, 68, .68); }
-    .tag { color: var(--muted); font-size: 11px; }
+    .steps li.running {
+      border-color: var(--status-warning);
+      background: rgba(255, 171, 0, .08);
+    }
+    .steps li.done {
+      border-color: var(--status-success);
+      background: rgba(54, 179, 126, .08);
+    }
+    .steps li.error {
+      border-color: var(--status-error);
+      background: rgba(255, 86, 48, .08);
+    }
+    .tag {
+      color: var(--text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
     .console {
       margin: 0;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px;
-      background: rgba(2, 6, 23, .72);
-      min-height: 68px;
-      max-height: 90px;
+      border: 1px solid var(--panel-border-strong);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      min-height: 84px;
+      max-height: 112px;
       overflow: auto;
       font-family: "JetBrains Mono", "Consolas", monospace;
       font-size: 12px;
-      line-height: 1.4;
+      line-height: 1.45;
       white-space: pre-wrap;
     }
 
@@ -202,95 +409,110 @@
       gap: 0;
     }
     details.catalog {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: rgba(2, 6, 23, .24);
-      margin-bottom: 9px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      background: var(--bg-tertiary);
+      margin-bottom: 12px;
       overflow: hidden;
     }
     details.catalog > summary {
       cursor: pointer;
       list-style: none;
-      padding: 8px 9px;
-      background: rgba(2, 6, 23, .45);
-      border-bottom: 1px solid var(--line);
-      color: #bfdbfe;
+      padding: 12px 14px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
       font-size: 13px;
       font-weight: 600;
     }
     details.catalog > summary::-webkit-details-marker { display: none; }
-    .catalog-body { padding: 8px; display: grid; gap: 8px; }
+    .catalog-body { padding: 12px; display: grid; gap: 10px; }
     .module-item {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border-subtle);
       border-radius: 10px;
-      padding: 8px;
-      background: rgba(2, 6, 23, .34);
+      padding: 12px;
+      background: var(--bg-secondary);
       cursor: grab;
+      transition: all .2s ease;
+    }
+    .module-item:hover {
+      border-color: var(--border-emphasis);
+      background: var(--bg-tertiary);
     }
     .module-item:active { cursor: grabbing; }
-    .module-item h4 { margin: 0 0 4px; font-size: 13px; }
-    .module-item p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .module-item h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+    .module-item p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
     .module-item .type {
       display: inline-block;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
       font-size: 11px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 2px 7px;
-      color: #bfdbfe;
+      border: 1px solid var(--accent-blue);
+      border-radius: 6px;
+      padding: 4px 8px;
+      color: var(--accent-blue);
+      background: rgba(76, 154, 255, .1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .drop-zone {
-      border: 2px dashed rgba(125, 211, 252, .3);
-      border-radius: 10px;
-      padding: 8px;
-      margin-bottom: 8px;
-      min-height: 110px;
-      background: rgba(2, 6, 23, .25);
+      border: 2px dashed var(--border-emphasis);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      min-height: 120px;
+      background: var(--bg-secondary);
+      display: grid;
+      align-items: center;
+      transition: all .2s ease;
     }
     .drop-zone.active {
-      border-color: rgba(56, 189, 248, .8);
-      background: rgba(56, 189, 248, .12);
+      border-color: var(--accent-blue);
+      background: rgba(76, 154, 255, .1);
+      box-shadow: 0 0 0 1px var(--accent-blue) inset;
     }
     .active-module {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border-subtle);
       border-radius: 10px;
-      padding: 8px;
-      margin-bottom: 7px;
-      background: rgba(2, 6, 23, .36);
+      padding: 12px;
+      margin-bottom: 10px;
+      background: var(--bg-secondary);
     }
     .active-module .row {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 4px;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
     }
-    .active-module .name { font-size: 13px; font-weight: 700; }
-    .active-module .meta { color: var(--muted); font-size: 12px; }
+    .active-module .name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .active-module .meta { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
     .tiny-btn {
-      border: 1px solid rgba(239, 68, 68, .45);
-      color: #fca5a5;
-      background: rgba(239, 68, 68, .14);
-      border-radius: 8px;
+      border: 1px solid rgba(239, 68, 68, .3);
+      color: #fecaca;
+      background: rgba(239, 68, 68, .12);
+      border-radius: 9px;
       font-size: 11px;
-      padding: 3px 7px;
+      font-weight: 600;
+      padding: 5px 9px;
       cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .02);
     }
     .tiny-btn.secondary {
-      border-color: rgba(56, 189, 248, .45);
-      color: #bae6fd;
+      border-color: rgba(56, 189, 248, .32);
+      color: #dbeafe;
       background: rgba(56, 189, 248, .12);
     }
     .btn:disabled,
     .tiny-btn:disabled {
       opacity: .45;
       cursor: not-allowed;
+      transform: none;
     }
     .project-tools {
       display: grid;
       gap: 8px;
-      margin-bottom: 10px;
-      padding-bottom: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
       border-bottom: 1px solid var(--line);
     }
     .project-tools-row {
@@ -301,12 +523,12 @@
     }
     .project-tools-row input[type="number"] {
       width: 96px;
-      padding: 5px 8px;
+      padding: 6px 8px;
       font-size: 12px;
     }
     .project-library {
       display: grid;
-      gap: 8px;
+      gap: 10px;
     }
     .project-select {
       display: inline-flex;
@@ -316,35 +538,102 @@
       font-size: 11px;
     }
     .project-item {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border-subtle);
       border-radius: 10px;
-      padding: 8px;
-      background: rgba(2, 6, 23, .34);
+      padding: 12px;
+      background: var(--bg-secondary);
+      display: grid;
+      gap: 10px;
+    }
+    .project-item.current {
+      border-color: var(--accent-blue);
+      background: rgba(76, 154, 255, .08);
     }
     .project-item .row {
       display: flex;
       justify-content: space-between;
-      gap: 8px;
+      gap: 10px;
       align-items: center;
-      margin-bottom: 4px;
+      margin-bottom: 0;
     }
     .project-item .name {
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 600;
       word-break: break-word;
+      color: var(--text-primary);
     }
     .project-item .meta {
-      color: var(--muted);
+      color: var(--text-secondary);
       font-size: 12px;
-      line-height: 1.35;
-      margin-bottom: 6px;
+      line-height: 1.5;
+      margin-bottom: 0;
+      display: grid;
+      gap: 8px;
     }
     .project-item .actions {
       justify-content: flex-start;
     }
+    .project-id {
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(56, 189, 248, .07);
+      color: #dbeafe;
+      font-size: 11px;
+      line-height: 1.2;
+    }
+    .chip.warn {
+      color: #fde68a;
+      background: rgba(245, 158, 11, .1);
+      border-color: rgba(245, 158, 11, .22);
+    }
+    .chip.err {
+      color: #fecaca;
+      background: rgba(239, 68, 68, .1);
+      border-color: rgba(239, 68, 68, .22);
+    }
+    .chip.ok {
+      color: #bbf7d0;
+      background: rgba(34, 197, 94, .1);
+      border-color: rgba(34, 197, 94, .22);
+    }
+    .kv-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .kv-item {
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      background: var(--bg-tertiary);
+    }
+    .kv-item .k {
+      color: var(--text-secondary);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .kv-item .v {
+      font-size: 12px;
+      font-weight: 600;
+      word-break: break-word;
+    }
     .toolbar {
       display: flex;
-      gap: 7px;
+      gap: 8px;
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
@@ -355,22 +644,24 @@
       position: sticky;
       top: 0;
       z-index: 12;
-      padding: 2px 0 10px;
-      background: linear-gradient(180deg, rgba(16, 33, 58, .98), rgba(16, 33, 58, .94) 72%, rgba(16, 33, 58, 0));
+      padding: 2px 0 12px;
+      background: linear-gradient(180deg, var(--bg-primary), var(--bg-primary) 72%, transparent);
       backdrop-filter: blur(8px);
     }
     .tab-btn {
       border: 1px solid var(--line);
       border-radius: 999px;
-      padding: 5px 10px;
-      background: rgba(2, 6, 23, .3);
-      color: var(--text);
+      padding: 6px 11px;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
       font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
     }
     .tab-btn.active {
-      border-color: rgba(56, 189, 248, .5);
-      background: rgba(29, 78, 216, .25);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 1px var(--accent) inset;
     }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
@@ -391,7 +682,7 @@
     .overview-protocols {
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: rgba(2, 6, 23, .28);
+      background: var(--bg-tertiary);
       padding: 10px;
       margin-bottom: 10px;
     }
@@ -402,9 +693,9 @@
       margin-bottom: 10px;
     }
     .overview-protocol-card {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border-subtle);
       border-radius: 9px;
-      background: rgba(2, 6, 23, .34);
+      background: var(--bg-tertiary);
       padding: 8px;
     }
     .overview-protocol-card .name {
@@ -441,8 +732,8 @@
       position: absolute;
       inset: 28%;
       border-radius: 50%;
-      background: rgba(8, 20, 39, .92);
-      border: 1px solid rgba(255, 255, 255, .08);
+      background: var(--bg-primary);
+      border: 1px solid var(--line);
     }
     .overview-pie-center {
       position: absolute;
@@ -489,7 +780,7 @@
       word-break: break-word;
     }
     .overview-legend-count {
-      color: #bfdbfe;
+      color: var(--text-primary);
       font-family: "JetBrains Mono", "Consolas", monospace;
     }
     .overview-legend-ratio {
@@ -497,12 +788,12 @@
       font-family: "JetBrains Mono", "Consolas", monospace;
     }
     .overview-empty {
-      border: 1px dashed var(--line);
+      border: 1px dashed var(--border-subtle);
       border-radius: 10px;
       padding: 20px;
       text-align: center;
-      color: var(--muted);
-      background: rgba(2, 6, 23, .2);
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
     }
     .overview-recommend-grid {
       display: grid;
@@ -511,10 +802,10 @@
       margin-bottom: 10px;
     }
     .overview-recommend-card {
-      border: 1px solid var(--line);
+      border: 1px solid var(--border-subtle);
       border-radius: 10px;
       padding: 10px;
-      background: rgba(2, 6, 23, .34);
+      background: var(--bg-tertiary);
       display: grid;
       gap: 6px;
     }
@@ -523,7 +814,7 @@
       font-weight: 700;
     }
     .overview-recommend-card .meta {
-      color: var(--muted);
+      color: var(--text-secondary);
       font-size: 12px;
       line-height: 1.45;
     }
@@ -532,7 +823,7 @@
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(2, 6, 23, .18);
+      background: var(--bg-secondary);
     }
     .scroll-box table {
       margin: 0;
@@ -541,7 +832,7 @@
       position: sticky;
       top: 0;
       z-index: 1;
-      background: rgba(12, 20, 36, .98);
+      background: var(--bg-tertiary);
     }
     @media (max-width: 900px) {
       .overview-pie-wrap {
@@ -557,7 +848,7 @@
       border-radius: 10px;
       padding: 10px;
       margin-bottom: 10px;
-      background: rgba(2, 6, 23, .34);
+      background: var(--bg-tertiary);
       overflow: hidden;
       min-width: 0;
     }
@@ -647,7 +938,7 @@
       padding: 8px 10px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(2, 6, 23, .55);
+      background: var(--bg-secondary);
       color: var(--text);
       font-size: 12px;
     }
@@ -657,7 +948,7 @@
       padding: 8px 10px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(2, 6, 23, .55);
+      background: var(--bg-secondary);
       color: var(--text);
       font-size: 12px;
     }
@@ -697,10 +988,33 @@
       overflow-wrap: anywhere;
       word-break: break-word;
     }
+    .ws-progress-track {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .ws-progress-fill {
+      height: 100%;
+      min-width: 0;
+      background: linear-gradient(90deg, rgba(14, 165, 233, .35), rgba(14, 165, 233, .9));
+      transition: width .2s ease;
+    }
+    .ws-progress-caption {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
     .ws-godzilla-result {
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: rgba(2, 6, 23, .26);
+      background: var(--bg-tertiary);
       padding: 10px;
       display: grid;
       gap: 10px;
@@ -715,7 +1029,7 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 8px;
-      background: rgba(2, 6, 23, .24);
+      background: var(--bg-secondary);
       min-width: 0;
     }
     .ws-godzilla-kv .k {
@@ -735,7 +1049,7 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 10px;
-      background: rgba(2, 6, 23, .22);
+      background: var(--bg-secondary);
       display: grid;
       gap: 8px;
       min-width: 0;
@@ -766,7 +1080,7 @@
       border-radius: 10px;
       padding: 10px;
       margin-bottom: 10px;
-      background: rgba(2, 6, 23, .34);
+      background: var(--bg-tertiary);
     }
     .http-json-meta,
     .http-json-summary {
@@ -779,7 +1093,7 @@
       margin-bottom: 8px;
     }
     .http-json-summary {
-      color: #bfdbfe;
+      color: var(--text-primary);
       margin-bottom: 8px;
     }
     .http-json-card pre {
@@ -809,7 +1123,7 @@
       padding: 8px 10px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(2, 6, 23, .55);
+      background: var(--bg-secondary);
       color: var(--text);
       font-size: 12px;
     }
@@ -823,14 +1137,14 @@
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(2, 6, 23, .18);
+      background: var(--bg-secondary);
       padding: 10px;
     }
     .http-site-group {
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 10px;
-      background: rgba(2, 6, 23, .34);
+      background: var(--bg-tertiary);
       margin-bottom: 10px;
     }
     .http-site-tree {
@@ -848,7 +1162,7 @@
     .http-site-node > summary {
       cursor: pointer;
       list-style: none;
-      color: #bfdbfe;
+      color: var(--text-primary);
       overflow-wrap: anywhere;
       word-break: break-word;
     }
@@ -890,7 +1204,7 @@
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 10px;
-      background: rgba(2, 6, 23, .34);
+      background: var(--bg-tertiary);
     }
     .dns-pattern-title {
       font-size: 13px;
@@ -926,7 +1240,7 @@
       padding: 8px 10px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(2, 6, 23, .55);
+      background: var(--bg-secondary);
       color: var(--text);
       font-size: 12px;
     }
@@ -949,33 +1263,103 @@
     th, td {
       text-align: left;
       padding: 6px;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid var(--border-subtle);
       vertical-align: top;
       word-break: break-word;
     }
-    th { color: var(--muted); font-weight: 600; }
+    th { color: var(--text-secondary); font-weight: 600; background: var(--bg-tertiary); }
     details.data {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 7px;
-      background: rgba(2, 6, 23, .34);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 8px;
+      background: var(--bg-tertiary);
       margin-bottom: 8px;
     }
-    details.data summary { cursor: pointer; color: #bfdbfe; font-size: 13px; }
+    details.data summary { cursor: pointer; color: var(--text-primary); font-size: 13px; font-weight: 600; }
     .raw {
       margin: 0;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px;
-      background: rgba(2, 6, 23, .72);
+      border: 1px solid var(--border-emphasis);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
       max-height: 560px;
+      overflow: auto;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text-primary);
+    }
       overflow: auto;
       white-space: pre-wrap;
       font-family: "JetBrains Mono", "Consolas", monospace;
       font-size: 12px;
-      line-height: 1.4;
+      line-height: 1.45;
     }
     .muted { color: var(--muted); }
+    .empty-state {
+      border: 1px dashed var(--border-subtle);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .confirm-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 80;
+      padding: 16px;
+    }
+    .confirm-overlay.open {
+      display: flex;
+    }
+    .confirm-dialog {
+      width: min(520px, 100%);
+      border: 1px solid var(--border-emphasis);
+      border-radius: 16px;
+      background: var(--bg-primary);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+      overflow: hidden;
+    }
+    .confirm-dialog .panel-hd {
+      padding: 14px 16px;
+    }
+    .confirm-dialog .panel-bd {
+      padding: 14px 16px 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .confirm-copy {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .confirm-meta {
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
 
     @media (max-width: 1050px) {
       body { padding: 6px; }
@@ -983,63 +1367,758 @@
       .board { grid-template-columns: 1fr; grid-auto-rows: minmax(260px, 1fr); }
       .resizer.vertical { display: none; }
     }
+    /* black redesign override */
+    :root {
+      --bg1: #020202;
+      --bg2: #08090b;
+      --panel: rgba(9, 10, 12, .96);
+      --panel-strong: rgba(4, 5, 7, .98);
+      --panel-soft: rgba(19, 21, 26, .92);
+      --panel-border: rgba(255, 255, 255, .08);
+      --panel-border-strong: rgba(255, 255, 255, .14);
+      --text: #f5f7fb;
+      --muted: #8993a4;
+      --line: rgba(255, 255, 255, .08);
+      --card: rgba(18, 20, 24, .96);
+      --accent: #8ab4f8;
+      --accent-strong: #5b8def;
+      --accent-soft: rgba(138, 180, 248, .12);
+      --shadow-lg: 0 24px 64px rgba(0, 0, 0, .42);
+      --shadow-sm: 0 12px 28px rgba(0, 0, 0, .28);
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 0% 0%, rgba(138, 180, 248, .08), transparent 24%),
+        radial-gradient(circle at 100% 100%, rgba(255, 255, 255, .03), transparent 28%),
+        linear-gradient(180deg, #050607 0%, #020202 100%);
+      padding: 14px;
+    }
+
+    a {
+      color: #dce9ff;
+    }
+
+    a:hover {
+      color: #ffffff;
+    }
+
+    .app-shell {
+      height: calc(100vh - 28px);
+      max-width: none;
+      grid-template-rows: auto 10px minmax(0, 1fr);
+    }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(12, 14, 17, .98), rgba(7, 8, 10, .98));
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 24px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      backdrop-filter: none;
+    }
+
+    .panel-hd {
+      padding: 18px 20px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, .02), rgba(255, 255, 255, 0));
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+      gap: 14px;
+    }
+
+    .panel-hd h2,
+    .panel-hd h3 {
+      font-size: 16px;
+      font-weight: 650;
+      letter-spacing: .2px;
+    }
+
+    .panel-bd {
+      padding: 18px 20px 20px;
+    }
+
+    .top-panel {
+      min-height: 72px;
+    }
+
+    .top-panel-hd {
+      align-items: center;
+      border-bottom: none;
+      padding: 14px 20px;
+    }
+
+    .headline-block {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .headline-kicker,
+    .deck-eyebrow {
+      color: var(--text-tertiary);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .headline-copy {
+      max-width: 760px;
+      line-height: 1.6;
+    }
+
+    .headline-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .panel-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .top-panel .panel-bd,
+    .top-panel .panel-bd.top-dashboard {
+      display: none;
+    }
+
+    .top-toolbar {
+      display: flex;
+      width: 100%;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .top-toolbar-left {
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .top-toolbar-right {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    #h-resizer,
+    .resizer.horizontal {
+      height: 10px;
+      margin: 4px 8px;
+    }
+
+    select,
+    .http-filter-field select,
+    .dns-template-field select,
+    .ws-filter-row select {
+      color-scheme: dark;
+      background-color: rgba(10, 13, 18, .92);
+      color: #edf3ff;
+    }
+
+    select option,
+    select optgroup {
+      background: #0b0f14 !important;
+      color: #edf3ff !important;
+    }
+
+    .deck-card {
+      min-width: 0;
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+    }
+
+    .deck-card-form { grid-area: form; }
+    .deck-card-meta { grid-area: meta; }
+    .deck-card-steps { grid-area: steps; }
+    .deck-card-console { grid-area: console; }
+
+    .deck-card-hd {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .deck-card-hd h3 {
+      margin: 4px 0 0;
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: .2px;
+    }
+
+    .deck-card-console .console {
+      min-height: 160px;
+      max-height: 220px;
+    }
+
+    .board-panel-catalog .panel-hd {
+      background: linear-gradient(180deg, rgba(138, 180, 248, .05), rgba(255, 255, 255, 0));
+    }
+
+    .board-panel-workspace .panel-hd {
+      background: linear-gradient(180deg, rgba(34, 197, 94, .04), rgba(255, 255, 255, 0));
+    }
+
+    .board-panel-results .panel-hd {
+      background: linear-gradient(180deg, rgba(138, 180, 248, .06), rgba(255, 255, 255, 0));
+    }
+
+    #run-form {
+      grid-column: 1;
+      align-self: start;
+    }
+
+    .top-meta {
+      grid-column: 2;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .top-panel .steps,
+    .top-panel .deck-card-console {
+      grid-column: 1 / -1;
+    }
+
+    .run-grid {
+      grid-template-columns: minmax(230px, 1.2fr) minmax(170px, .45fr) auto;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .field {
+      gap: 7px;
+    }
+
+    .field label {
+      color: #adb7c8;
+      font-size: 12px;
+      letter-spacing: .2px;
+    }
+
+    input[type="file"],
+    input[type="number"],
+    select,
+    .http-filter-field select,
+    .http-filter-field input,
+    .dns-template-field select,
+    .dns-template-field input,
+    .ws-filter-row select,
+    .ws-filter-row input[type="text"] {
+      padding: 11px 13px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, .08);
+      background: rgba(255, 255, 255, .03);
+      color: var(--text);
+    }
+
+    input[type="file"]::file-selector-button {
+      margin-right: 12px;
+      border: 0;
+      border-radius: 10px;
+      padding: 7px 10px;
+      background: rgba(255, 255, 255, .08);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .actions,
+    .project-tools-row,
+    .toolbar,
+    .ws-inline-actions,
+    .confirm-actions {
+      gap: 10px;
+    }
+
+    .btn,
+    .tab-btn,
+    .ws-primary-btn {
+      padding: 10px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(138, 180, 248, .2);
+      background: linear-gradient(135deg, rgba(67, 110, 180, .35), rgba(138, 180, 248, .18));
+      color: #f8fbff;
+      font-weight: 600;
+      box-shadow: none;
+    }
+
+    .btn.secondary,
+    .tiny-btn.secondary,
+    .tab-btn,
+    .ws-primary-btn {
+      background: rgba(255, 255, 255, .025);
+      border-color: rgba(255, 255, 255, .08);
+      color: var(--text);
+    }
+
+    .tiny-btn {
+      border-radius: 12px;
+      padding: 7px 11px;
+      border-color: rgba(239, 68, 68, .22);
+      background: rgba(239, 68, 68, .08);
+      color: #ffd5d5;
+      box-shadow: none;
+    }
+
+    .btn:hover:not(:disabled),
+    .tiny-btn:hover:not(:disabled),
+    .tab-btn:hover:not(:disabled),
+    .ws-primary-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(138, 180, 248, .35);
+      background: rgba(255, 255, 255, .05);
+    }
+
+    .status {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 999px;
+      letter-spacing: .2px;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+    }
+
+    .top-meta {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+
+    .meta-item,
+    .kv-item,
+    .metric,
+    .overview-protocol-card,
+    .overview-recommend-card,
+    .http-json-card,
+    .dns-pattern-card,
+    .dns-output-card,
+    .ws-command,
+    .ws-meta-card,
+    .http-site-group,
+    .ws-godzilla-entry,
+    .ws-godzilla-result,
+    .ws-godzilla-kv .item {
+      border: 1px solid rgba(255, 255, 255, .06);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, .015));
+      box-shadow: none;
+    }
+
+    .meta-item {
+      padding: 12px 14px;
+    }
+
+    .meta-item .k,
+    .kv-item .k,
+    .metric .k,
+    .ws-meta-label,
+    .http-filter-count,
+    .project-id,
+    .tag,
+    .muted {
+      color: #8e98aa;
+    }
+
+    .meta-item .v,
+    .kv-item .v,
+    .metric .v {
+      color: #f6f7fb;
+    }
+
+    .steps {
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .steps li {
+      border-radius: 16px;
+      padding: 11px 12px;
+      background: rgba(255, 255, 255, .02);
+      border-color: rgba(255, 255, 255, .06);
+    }
+
+    .console,
+    .raw,
+    .scroll-box,
+    .http-site-scroll {
+      border: 1px solid rgba(255, 255, 255, .06);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(1, 2, 4, .96), rgba(8, 9, 12, .94));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+    }
+
+    .console {
+      min-height: 124px;
+      max-height: 170px;
+      padding: 14px 16px;
+      color: #c9d4e6;
+    }
+
+    .resizer {
+      background: rgba(255, 255, 255, .06);
+    }
+
+    .resizer:hover {
+      background: rgba(138, 180, 248, .3);
+    }
+
+    .resizer.horizontal {
+      height: 10px;
+      margin: 4px 8px;
+    }
+
+    .resizer.vertical {
+      width: 10px;
+      margin: 8px 0;
+    }
+
+    .board {
+      gap: 0;
+    }
+
+    details.catalog,
+    details.data,
+    .project-item,
+    .module-item,
+    .active-module {
+      border: 1px solid rgba(255, 255, 255, .06);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, .012));
+      box-shadow: none;
+    }
+
+    details.catalog > summary,
+    details.data summary {
+      padding: 13px 14px;
+      background: rgba(255, 255, 255, .03);
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+      color: #edf3ff;
+      font-size: 13px;
+    }
+
+    .catalog-body {
+      padding: 12px;
+      gap: 10px;
+    }
+
+    .project-tools {
+      gap: 10px;
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+    }
+
+    .project-tools-row input[type="number"] {
+      width: 116px;
+    }
+
+    .module-item,
+    .active-module,
+    .project-item {
+      padding: 14px;
+    }
+
+    .module-item h4,
+    .active-module .name,
+    .project-item .name {
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .module-item .type,
+    .chip {
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: rgba(138, 180, 248, .08);
+      border-color: rgba(138, 180, 248, .16);
+      color: #d7e6ff;
+    }
+
+    .drop-zone {
+      min-height: 164px;
+      border-radius: 20px;
+      border: 1px dashed rgba(138, 180, 248, .3);
+      background:
+        linear-gradient(180deg, rgba(138, 180, 248, .04), rgba(255, 255, 255, .015));
+      padding: 18px;
+    }
+
+    .drop-zone.active {
+      border-color: rgba(138, 180, 248, .65);
+      background: rgba(138, 180, 248, .08);
+      box-shadow: inset 0 0 0 1px rgba(138, 180, 248, .25);
+    }
+
+    .project-item.current {
+      border-color: rgba(138, 180, 248, .35);
+      box-shadow: inset 0 0 0 1px rgba(138, 180, 248, .12);
+    }
+
+    .result-tabs-sticky {
+      top: -20px;
+      margin: -20px -8px 0;
+      padding: 20px 8px 16px;
+      background: linear-gradient(180deg, rgba(10, 12, 15, .995) 0%, rgba(10, 12, 15, .97) 66%, rgba(10, 12, 15, .88) 82%, rgba(10, 12, 15, 0) 100%);
+      backdrop-filter: blur(16px);
+    }
+
+    .tab-btn.active {
+      border-color: rgba(138, 180, 248, .35);
+      background: rgba(138, 180, 248, .12);
+      color: #edf3ff;
+      box-shadow: inset 0 0 0 1px rgba(138, 180, 248, .08);
+    }
+
+    table {
+      font-size: 12.5px;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+    }
+
+    th {
+      color: #9ba6b8;
+      font-weight: 600;
+      background: rgba(255, 255, 255, .02);
+    }
+
+    .empty-state,
+    .overview-empty {
+      border-radius: 18px;
+      border: 1px dashed rgba(255, 255, 255, .1);
+      background: rgba(255, 255, 255, .02);
+      color: #95a0b2;
+      padding: 24px;
+    }
+
+    .confirm-overlay {
+      background: rgba(0, 0, 0, .72);
+      backdrop-filter: blur(10px);
+    }
+
+    .confirm-dialog {
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(12, 14, 17, .99), rgba(6, 8, 10, .99));
+      border: 1px solid rgba(255, 255, 255, .08);
+    }
+
+    .confirm-meta {
+      border-radius: 16px;
+      border-color: rgba(255, 255, 255, .06);
+      background: rgba(255, 255, 255, .025);
+      color: #dbe6f8;
+    }
+
+    @media (max-width: 1400px) {
+      .top-panel .panel-bd,
+      .top-panel .panel-bd.top-dashboard {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "form"
+          "meta"
+          "steps"
+          "console";
+      }
+
+      #run-form,
+      .top-meta,
+      .top-panel .steps,
+      .top-panel .deck-card-console {
+        grid-column: 1;
+      }
+
+      .headline-actions {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 1200px) {
+      .run-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .top-meta {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+
+      .deck-card {
+        padding: 16px;
+      }
+    }
+
+    /* Collapse functionality */
+    .collapse-btn {
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, .08);
+      background: rgba(255, 255, 255, .025);
+      color: #8e98aa;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all .18s ease;
+      white-space: nowrap;
+    }
+
+    .collapse-btn:hover {
+      background: rgba(255, 255, 255, .05);
+      border-color: rgba(138, 180, 248, .25);
+      color: #dce9ff;
+    }
+
+    .top-panel.collapsed {
+      min-height: auto;
+    }
+
+    .top-panel.collapsed .panel-bd {
+      display: none;
+    }
+
+    .board-panel-catalog.collapsed,
+    .board-panel-workspace.collapsed {
+      width: 48px;
+      min-width: 48px;
+    }
+
+    .board-panel-catalog.collapsed .panel-bd,
+    .board-panel-workspace.collapsed .panel-bd {
+      display: none;
+    }
+
+    .board-panel-catalog.collapsed .panel-hd > div,
+    .board-panel-workspace.collapsed .panel-hd > div {
+      display: none;
+    }
+
+    .board-panel-catalog.collapsed .panel-hd,
+    .board-panel-workspace.collapsed .panel-hd {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      padding: 14px 12px;
+      justify-content: center;
+    }
+
+    .board-panel-catalog.collapsed .collapse-btn,
+    .board-panel-workspace.collapsed .collapse-btn {
+      writing-mode: horizontal-tb;
+      transform: rotate(0deg);
+    }
+
   </style>
 </head>
 <body>
+  <!-- Sidebar Navigation -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-nav">
+      <button class="sidebar-btn active" data-view="analysis" title="分析工作台">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3v18h18M7 16l4-4 4 4 6-6"/>
+        </svg>
+      </button>
+      <button class="sidebar-btn" data-view="projects" title="项目管理">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+        </svg>
+      </button>
+      <button class="sidebar-btn" data-view="modules" title="模块库">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+      </button>
+      <button class="sidebar-btn" data-view="results" title="结果查看">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </button>
+    </div>
+  </nav>
+
   <div class="app-shell" id="app-shell">
     <section class="panel top-panel" id="top-panel">
-      <div class="panel-hd">
-        <h2>运行与调试</h2>
-        <span class="status wait" id="run-status">等待文件</span>
-      </div>
-      <div class="panel-bd">
-        <form id="run-form" class="run-grid">
-          <div class="field">
-            <label for="pcap-file">PCAP 文件（选择后自动开始基础解析）</label>
-            <input id="pcap-file" type="file" accept=".pcap,.pcapng,.cap" required>
+      <div class="panel-hd top-panel-hd">
+        <div class="top-toolbar">
+          <div class="top-toolbar-left">
+            <span class="logo">流量分析平台</span>
+            <form id="run-form" style="display: flex; gap: 12px; align-items: center;">
+              <div class="field" style="margin: 0;">
+                <input id="pcap-file" type="file" accept=".pcap,.pcapng,.cap" required style="width: 200px; padding: 8px 12px;">
+              </div>
+              <div class="field" style="margin: 0;">
+                <input id="max-packets" type="number" min="1" placeholder="最大包数" style="width: 120px; padding: 8px 12px;">
+              </div>
+              <button class="btn secondary" id="restart-btn" type="button" style="padding: 8px 12px;">重新解析</button>
+              <button class="btn secondary" id="clear-active-btn" type="button" style="padding: 8px 12px;">清空模块</button>
+            </form>
           </div>
-          <div class="field">
-            <label for="max-packets">最大包数</label>
-            <input id="max-packets" type="number" min="1" placeholder="全部">
+          <div class="top-toolbar-right">
+            <span class="status wait" id="run-status">等待文件</span>
           </div>
-          <div class="field">
-            <label>快捷操作</label>
-            <div class="actions">
-              <button class="btn secondary" id="restart-btn" type="button">重新基础解析</button>
-              <button class="btn secondary" id="clear-active-btn" type="button">清空解析栏目</button>
-              <button class="btn secondary" id="clear-log-btn" type="button">清空日志</button>
-            </div>
-          </div>
-        </form>
-
-        <div class="top-meta">
-          <div class="meta-item"><div class="k">文件名</div><div class="v" id="meta-file-name">-</div></div>
-          <div class="meta-item"><div class="k">大小</div><div class="v" id="meta-file-size">-</div></div>
-          <div class="meta-item"><div class="k">修改时间</div><div class="v" id="meta-file-time">-</div></div>
-          <div class="meta-item"><div class="k">总 Packet</div><div class="v" id="meta-total-packet-count">-</div></div>
-          <div class="meta-item"><div class="k">已解析 Packet</div><div class="v" id="meta-packet-count">0</div></div>
-          <div class="meta-item"><div class="k">解析进度</div><div class="v" id="meta-parse-progress">0 / -</div></div>
-          <div class="meta-item"><div class="k">解析栏目模块数</div><div class="v" id="meta-module-count">0</div></div>
         </div>
+      </div>
+      <div class="panel-bd top-dashboard">
+        <!-- Metrics cards - collapsible section -->
+        <details class="metrics-section" open>
+          <summary style="cursor: pointer; padding: 12px 0; font-weight: 600; color: var(--text-primary);">📊 实时指标</summary>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 12px;">
+            <div class="meta-item"><div class="k">文件名</div><div class="v" id="meta-file-name">-</div></div>
+            <div class="meta-item"><div class="k">大小</div><div class="v" id="meta-file-size">-</div></div>
+            <div class="meta-item"><div class="k">修改时间</div><div class="v" id="meta-file-time">-</div></div>
+            <div class="meta-item"><div class="k">总 Packet</div><div class="v" id="meta-total-packet-count">-</div></div>
+            <div class="meta-item"><div class="k">已解析</div><div class="v" id="meta-packet-count">0</div></div>
+            <div class="meta-item"><div class="k">进度</div><div class="v" id="meta-parse-progress">0 / -</div></div>
+            <div class="meta-item"><div class="k">模块数</div><div class="v" id="meta-module-count">0</div></div>
+          </div>
+        </details>
 
-        <ul class="steps">
-          <li id="step-upload"><span>上传</span><span class="tag">pending</span></li>
-          <li id="step-parse"><span>基础解析</span><span class="tag">pending</span></li>
-          <li id="step-protocol"><span>协议模块</span><span class="tag">pending</span></li>
-          <li id="step-attack"><span>攻击模块</span><span class="tag">pending</span></li>
-          <li id="step-render"><span>结果渲染</span><span class="tag">pending</span></li>
-        </ul>
+        <!-- Pipeline steps -->
+        <details class="pipeline-section" open style="margin-top: 16px;">
+          <summary style="cursor: pointer; padding: 12px 0; font-weight: 600; color: var(--text-primary);">⚡ 执行阶段</summary>
+          <ul class="steps" style="margin-top: 12px;">
+            <li id="step-upload"><span>上传</span><span class="tag">pending</span></li>
+            <li id="step-parse"><span>基础解析</span><span class="tag">pending</span></li>
+            <li id="step-protocol"><span>协议模块</span><span class="tag">pending</span></li>
+            <li id="step-attack"><span>攻击模块</span><span class="tag">pending</span></li>
+            <li id="step-render"><span>结果渲染</span><span class="tag">pending</span></li>
+          </ul>
+        </details>
 
-        <pre id="console-box" class="console">[INFO] 等待任务...</pre>
+        <section class="deck-card deck-card-console" aria-label="运行日志">
+          <div class="deck-card-hd">
+            <div>
+              <div class="deck-eyebrow">Console</div>
+              <h3>运行日志</h3>
+            </div>
+            <span class="muted" style="font-size: 12px;">上传、调度、接口异常会在这里输出</span>
+          </div>
+          <pre id="console-box" class="console">[INFO] 控制台已就绪，等待操作。</pre>
+        </section>
       </div>
     </section>
 
     <div class="resizer horizontal" id="h-resizer"></div>
 
     <section class="board" id="board">
-      <section class="panel">
+      <section class="panel board-panel-catalog">
         <div class="panel-hd">
-          <h3>模块库</h3>
+          <div>
+            <div class="deck-eyebrow">Sources</div>
+            <h3>项目与模块目录</h3>
+            <div class="muted" style="font-size:12px; margin-top:4px;">恢复样本项目，并从协议/攻击模块目录中选择分析能力</div>
+          </div>
+          <button class="collapse-btn" id="catalog-collapse-btn" type="button">收起 ◀</button>
           <span class="muted" id="module-count">0 modules</span>
         </div>
         <div class="panel-bd">
@@ -1073,14 +2152,21 @@
 
       <div class="resizer vertical" id="v-resizer-left"></div>
 
-      <section class="panel">
+      <section class="panel board-panel-workspace">
         <div class="panel-hd">
-          <h3>解析栏目</h3>
+          <div>
+            <div class="deck-eyebrow">Workspace</div>
+            <h3>当前分析工作区</h3>
+            <div class="muted" style="font-size:12px; margin-top:4px;">拖拽或点击模块加入当前样本，按需重跑、移除并持续观察执行状态</div>
+          </div>
+          <button class="collapse-btn" id="workspace-collapse-btn" type="button">收起 ◀</button>
           <span class="muted" id="active-count">0 active</span>
         </div>
         <div class="panel-bd">
           <div id="drop-zone" class="drop-zone">
-            <div class="muted" style="font-size:12px;">拖动左侧模块到这里。拖入即注册解析；若无文件则等待文件基础解析完成后启动。</div>
+            <div class="muted" id="drop-zone-copy" style="font-size:12px; line-height:1.7; max-width:420px; margin:0 auto; text-align:center;">
+              将左侧模块拖到这里，或直接点击模块卡片加入当前工作区。若当前没有样本，模块会先进入等待状态，待基础解析完成后自动接续执行。
+            </div>
           </div>
           <div id="active-module-list"></div>
         </div>
@@ -1088,9 +2174,13 @@
 
       <div class="resizer vertical" id="v-resizer-right"></div>
 
-      <section class="panel">
+      <section class="panel board-panel-results">
         <div class="panel-hd">
-          <h3>结果工作区</h3>
+          <div>
+            <div class="deck-eyebrow">Insights</div>
+            <h3>结果与调试观察台</h3>
+            <div class="muted" style="font-size:12px; margin-top:4px;">总览、调试、原始数据、HTTP/DNS/WebShell 结果与导出制品在这里集中查看</div>
+          </div>
           <span class="muted">按模块分栏展示结果</span>
         </div>
         <div class="panel-bd result-workspace">
@@ -1099,6 +2189,23 @@
         </div>
       </section>
     </section>
+  </div>
+
+  <div id="confirm-overlay" class="confirm-overlay" aria-hidden="true">
+    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="panel-hd">
+        <h3 id="confirm-title">请确认操作</h3>
+        <span class="status err">高影响操作</span>
+      </div>
+      <div class="panel-bd">
+        <div id="confirm-copy" class="confirm-copy">该操作会影响当前项目数据。</div>
+        <div id="confirm-meta" class="confirm-meta"></div>
+        <div class="confirm-actions">
+          <button class="btn secondary" id="confirm-cancel-btn" type="button">取消</button>
+          <button class="btn" id="confirm-ok-btn" type="button">继续执行</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -1130,10 +2237,14 @@
 
     const restartBtn = document.getElementById("restart-btn");
     const clearActiveBtn = document.getElementById("clear-active-btn");
-    const clearLogBtn = document.getElementById("clear-log-btn");
 
     const resultTabs = document.getElementById("result-tabs");
     const resultPanes = document.getElementById("result-panes");
+    const confirmOverlay = document.getElementById("confirm-overlay");
+    const confirmCopy = document.getElementById("confirm-copy");
+    const confirmMeta = document.getElementById("confirm-meta");
+    const confirmOkBtn = document.getElementById("confirm-ok-btn");
+    const confirmCancelBtn = document.getElementById("confirm-cancel-btn");
 
     const ruleMap = {};
 
@@ -1152,6 +2263,9 @@
     let currentResultTabId = "overview";
     let currentInspectTabId = "overview";
     const paneUiState = {};
+    let projectCatalogRenderSignature = "";
+    let currentPollDelay = 1000;
+    let pendingConfirm = null;
 
     const layout = {
       left: 25,
@@ -1165,6 +2279,42 @@
       const ts = new Date().toLocaleTimeString();
       consoleBox.textContent += `\n[${level}] ${ts} ${msg}`;
       consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+
+    function openConfirmDialog({
+      title = "请确认操作",
+      message = "该操作会影响当前项目数据。",
+      meta = "",
+      confirmLabel = "继续执行",
+      tone = "danger",
+    } = {}) {
+      if (pendingConfirm) {
+        resolveConfirmDialog(false);
+      }
+      const titleEl = document.getElementById("confirm-title");
+      const badgeEl = confirmOverlay.querySelector(".status");
+      titleEl.textContent = title;
+      confirmCopy.textContent = message;
+      confirmMeta.textContent = meta || "将继续执行该操作。";
+      confirmOkBtn.textContent = confirmLabel;
+      confirmOkBtn.classList.toggle("secondary", tone !== "danger");
+      badgeEl.className = `status ${tone === "danger" ? "err" : "run"}`;
+      badgeEl.textContent = tone === "danger" ? "高影响操作" : "请确认";
+      confirmOverlay.classList.add("open");
+      confirmOverlay.setAttribute("aria-hidden", "false");
+      confirmCancelBtn.focus();
+      return new Promise((resolve) => {
+        pendingConfirm = resolve;
+      });
+    }
+
+    function resolveConfirmDialog(result) {
+      if (!pendingConfirm) return;
+      const resolve = pendingConfirm;
+      pendingConfirm = null;
+      confirmOverlay.classList.remove("open");
+      confirmOverlay.setAttribute("aria-hidden", "true");
+      resolve(result);
     }
 
     function setStatus(text, mode) {
@@ -1240,6 +2390,26 @@
       const scopedKey = `${currentProjectId || currentJobId || "default"}:${key}`;
       paneUiState[scopedKey] = { ...defaults, ...(paneUiState[scopedKey] || {}) };
       return paneUiState[scopedKey];
+    }
+
+    function tlsTaskSignature(task) {
+      if (!task) return "";
+      const progress = task.progress || {};
+      const resultSummary = task.result?.summary || {};
+      return JSON.stringify({
+        task_id: String(task.task_id || ""),
+        status: String(task.status || ""),
+        stage: String(task.stage || ""),
+        message: String(task.message || ""),
+        updated_at: String(task.updated_at || task.finished_at || task.started_at || task.created_at || ""),
+        progress_updated_at: String(progress.updated_at || ""),
+        processed: progress.processed ?? null,
+        total: progress.total ?? null,
+        error: String(task.error || ""),
+        http_request_count: resultSummary.http_request_count ?? null,
+        http_upload_count: resultSummary.http_upload_count ?? null,
+        flag_hit_count: resultSummary.flag_hit_count ?? null,
+      });
     }
 
     function printableRatio(text) {
@@ -1359,6 +2529,41 @@
       return String(right || "").localeCompare(String(left || ""));
     }
 
+    function projectCatalogSignature(projects) {
+      return JSON.stringify((projects || []).map((item) => ({
+        project_id: item.project_id,
+        status: item.status,
+        updated_at: item.updated_at,
+        module_count: item.module_count,
+        completed_module_count: item.completed_module_count,
+        running_module_count: item.running_module_count,
+        error_module_count: item.error_module_count,
+        can_delete: item.can_delete,
+      })));
+    }
+
+    function describeProjectMeta(project) {
+      const totalPackets = project.source_packet_count ?? project.target_packet_count;
+      return [
+        `文件: ${project.filename || project.project_id}`,
+        `项目ID: ${project.project_id}`,
+        `状态: ${project.status || "unknown"}`,
+        `大小: ${formatBytes(project.source_size_bytes)}`,
+        `Packet: ${formatCount(totalPackets)}`,
+        `模块: ${project.completed_module_count || 0}/${project.module_count || 0}`,
+        `删除条件: ${project.can_delete ? "允许" : (project.delete_block_reason || "当前不可删除")}`,
+      ].join("\n");
+    }
+
+    function computeNextPollDelay(job) {
+      if (!job) return 4000;
+      const moduleStates = Array.isArray(job.modules) ? job.modules.map((item) => item.status) : [];
+      const hasRunning = moduleStates.some((state) => state === "running" || state === "pending" || state === "waiting_file");
+      if (job.status === "parsing" || hasRunning) return 1000;
+      if (job.status === "parsed" || job.status === "error") return 4000;
+      return 2500;
+    }
+
     function deriveProjectState(status, modules, parseError) {
       const items = Array.isArray(modules) ? modules : [];
       const runningModuleCount = items.filter((item) => item.status === "running").length;
@@ -1426,13 +2631,15 @@
     }
 
     function hydrateActiveModulesFromJob(job) {
-      activeModules = (job.modules || []).map((module) => ({
-        type: module.module_type,
-        name: module.module_name,
-        description: findModuleDescription(module.module_type, module.module_name),
-        state: module.status || "pending",
-        progress: module.progress || null,
-      }));
+      activeModules = (job.modules || [])
+        .filter((module) => String(module.status || "").toLowerCase() !== "stopped")
+        .map((module) => ({
+          type: module.module_type,
+          name: module.module_name,
+          description: findModuleDescription(module.module_type, module.module_name),
+          state: module.status || "pending",
+          progress: module.progress || null,
+        }));
     }
 
     function formatModuleProgress(progress) {
@@ -1476,6 +2683,8 @@
       currentResultTabId = "overview";
       currentInspectTabId = "overview";
       activeModules = [];
+      currentPollDelay = 1000;
+      projectCatalogRenderSignature = "";
       stopPolling();
       document.getElementById("meta-file-name").textContent = "-";
       document.getElementById("meta-file-size").textContent = "-";
@@ -1548,7 +2757,32 @@
     }
 
     function applyBoardLayout() {
-      board.style.gridTemplateColumns = `${layout.left}% 8px ${layout.mid}% 8px ${layout.right}%`;
+      const catalogPanel = document.querySelector(".board-panel-catalog");
+      const workspacePanel = document.querySelector(".board-panel-workspace");
+      const catalogCollapsed = catalogPanel?.classList.contains("collapsed");
+      const workspaceCollapsed = workspacePanel?.classList.contains("collapsed");
+
+      let leftWidth, midWidth, rightWidth;
+
+      if (catalogCollapsed && workspaceCollapsed) {
+        leftWidth = "48px";
+        midWidth = "48px";
+        rightWidth = "calc(100% - 48px - 8px - 48px - 8px)";
+      } else if (catalogCollapsed) {
+        leftWidth = "48px";
+        midWidth = `${layout.mid}%`;
+        rightWidth = `calc(100% - 48px - 8px - ${layout.mid}% - 8px)`;
+      } else if (workspaceCollapsed) {
+        leftWidth = `${layout.left}%`;
+        midWidth = "48px";
+        rightWidth = `calc(100% - ${layout.left}% - 8px - 48px - 8px)`;
+      } else {
+        leftWidth = `${layout.left}%`;
+        midWidth = `${layout.mid}%`;
+        rightWidth = `${layout.right}%`;
+      }
+
+      board.style.gridTemplateColumns = `${leftWidth} 8px ${midWidth} 8px ${rightWidth}`;
     }
 
     function isContextResultTab(tabId) {
@@ -1580,11 +2814,7 @@
     }
 
     function applyTopLayout() {
-      if (!layout.topManual || layout.topPx == null) {
-        appShell.style.gridTemplateRows = "auto 8px minmax(0, 1fr)";
-        return;
-      }
-      appShell.style.gridTemplateRows = `${layout.topPx}px 8px minmax(0, 1fr)`;
+      appShell.style.gridTemplateRows = "auto 10px minmax(0, 1fr)";
     }
 
     function initResizers() {
@@ -1701,24 +2931,33 @@
     }
 
     function renderProjectCatalog() {
+      const sorted = [...projectCatalog].sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+      const signature = projectCatalogSignature(sorted);
+      if (signature === projectCatalogRenderSignature) {
+        updateProjectToolbarState();
+        return;
+      }
+      projectCatalogRenderSignature = signature;
       projectLibrary.innerHTML = "";
-      if (!projectCatalog.length) {
-        projectLibrary.innerHTML = `<div class="muted" style="font-size:12px;">暂无样本项目。上传文件后会自动保存到这里。</div>`;
+      if (!sorted.length) {
+        projectLibrary.innerHTML = `<div class="empty-state">暂无样本项目。上传文件后会自动保存到这里，后续可以直接恢复继续分析。</div>`;
         updateProjectToolbarState();
         return;
       }
 
-      const sorted = [...projectCatalog].sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
       for (const project of sorted) {
         const card = document.createElement("div");
-        card.className = "project-item";
+        card.className = `project-item${currentProjectId === project.project_id ? " current" : ""}`;
         const totalPackets = project.source_packet_count ?? project.target_packet_count;
         const updatedAt = project.updated_at ? new Date(project.updated_at).toLocaleString() : "-";
         const isCurrent = currentProjectId === project.project_id;
         const isSelected = selectedProjectIds.has(project.project_id);
         const completedModules = formatProjectCompletedModules(project);
         const errorSummary = formatProjectErrors(project);
-        const deleteHint = project.can_delete ? "可删除" : (project.delete_block_reason || "当前不可删除");
+        const deleteHint = project.can_delete ? "当前允许删除" : (project.delete_block_reason || "当前不可删除");
+        const errorChip = project.error_module_count ? `<span class="chip err">错误 ${esc(String(project.error_module_count))}</span>` : "";
+        const runningChip = project.running_module_count ? `<span class="chip warn">运行中 ${esc(String(project.running_module_count))}</span>` : "";
+        const currentChip = isCurrent ? `<span class="chip ok">当前项目</span>` : "";
         card.innerHTML = `
           <div class="row">
             <label class="project-select">
@@ -1727,15 +2966,26 @@
             </label>
             <span class="status ${projectStatusMode(project.status)}">${esc(project.status || "unknown")}</span>
           </div>
-          <div class="name">${esc(project.filename || project.project_id)}</div>
+          <div>
+            <div class="name">${esc(project.filename || project.project_id)}</div>
+            <div class="project-id">${esc(project.project_id)}</div>
+          </div>
+          <div class="chip-row">
+            ${currentChip}
+            <span class="chip">模式 ${esc(project.parse_mode || "-")}</span>
+            <span class="chip ok">完成 ${esc(`${project.completed_module_count || 0}/${project.module_count || 0}`)}</span>
+            ${runningChip}
+            ${errorChip}
+          </div>
           <div class="meta">
-            project=${esc(project.project_id)}${isCurrent ? " · 当前" : ""}<br>
-            size=${esc(formatBytes(project.source_size_bytes))} · mode=${esc(project.parse_mode || "-")}<br>
-            packet=${esc(formatCount(totalPackets))} · module=${esc(`${project.completed_module_count || 0}/${project.module_count || 0}`)} · run=${esc(String(project.running_module_count || 0))} · err=${esc(String(project.error_module_count || 0))}<br>
-            last=${esc(completedModules)}<br>
-            error=${esc(errorSummary)}<br>
-            delete=${esc(deleteHint)}<br>
-            updated=${esc(updatedAt)}
+            <div class="kv-grid">
+              <div class="kv-item"><div class="k">文件大小</div><div class="v">${esc(formatBytes(project.source_size_bytes))}</div></div>
+              <div class="kv-item"><div class="k">Packet</div><div class="v">${esc(formatCount(totalPackets))}</div></div>
+              <div class="kv-item"><div class="k">最近完成模块</div><div class="v">${esc(completedModules)}</div></div>
+              <div class="kv-item"><div class="k">最近更新时间</div><div class="v">${esc(updatedAt)}</div></div>
+            </div>
+            <div class="kv-item"><div class="k">删除条件</div><div class="v">${esc(deleteHint)}</div></div>
+            ${errorSummary !== "-" ? `<div class="kv-item"><div class="k">最近错误</div><div class="v">${esc(errorSummary)}</div></div>` : ""}
           </div>
           <div class="actions">
             <button class="tiny-btn secondary" type="button" data-action="recover" data-project-id="${esc(project.project_id)}">恢复</button>
@@ -1774,6 +3024,7 @@
         throw new Error(payload?.detail || "项目列表加载失败");
       }
       projectCatalog = payload.projects || [];
+      projectCatalogRenderSignature = "";
       const existingIds = new Set(projectCatalog.map((item) => item.project_id));
       selectedProjectIds = new Set([...selectedProjectIds].filter((item) => existingIds.has(item)));
       renderProjectCatalog();
@@ -1802,6 +3053,7 @@
         renderWorkspace();
         updateStepByJob(payload.job);
         syncProjectCatalogFromJob(payload.job);
+        projectCatalogRenderSignature = "";
         renderProjectCatalog();
         startPolling();
         log(`项目已恢复: ${payload.project.filename} (${payload.project.project_id})`);
@@ -1816,7 +3068,14 @@
         log(`项目暂不可删除: ${project.delete_block_reason || "存在未完成任务"}`, "WARN");
         return;
       }
-      if (!window.confirm(`确认删除项目 ${projectId} 吗？这会删除持久化的 SQLite 和项目元数据。`)) {
+      const confirmed = await openConfirmDialog({
+        title: "删除项目",
+        message: "该操作会删除持久化的 SQLite 数据和项目元数据，且无法自动恢复。",
+        meta: project ? describeProjectMeta(project) : `项目ID: ${projectId}`,
+        confirmLabel: "确认删除",
+        tone: "danger",
+      });
+      if (!confirmed) {
         return;
       }
       try {
@@ -1827,6 +3086,7 @@
         }
 
         projectCatalog = projectCatalog.filter((item) => item.project_id !== projectId);
+        projectCatalogRenderSignature = "";
         selectedProjectIds.delete(projectId);
         if (currentProjectId === projectId || currentJobId === projectId) {
           clearCurrentProjectView();
@@ -1849,11 +3109,17 @@
         <span class="type">${type}</span>
         <h4>${esc(item.name)}</h4>
         <p>${esc(item.description || "")}</p>
+        <div class="actions" style="margin-top:8px;">
+          <button class="tiny-btn secondary" type="button" data-action="add-module">加入工作区</button>
+        </div>
       `;
       el.addEventListener("dragstart", (e) => {
         const payload = { type, name: item.name, description: item.description || "" };
         e.dataTransfer.setData("application/json", JSON.stringify(payload));
         e.dataTransfer.effectAllowed = "copy";
+      });
+      el.querySelector("button[data-action='add-module']")?.addEventListener("click", async () => {
+        await addActiveModule({ type, name: item.name, description: item.description || "" });
       });
       return el;
     }
@@ -1864,7 +3130,7 @@
       metaModuleCountEl.textContent = String(activeModules.length);
 
       if (!activeModules.length) {
-        activeListEl.innerHTML = `<div class="muted" style="font-size:12px;">暂无模块。拖入模块后即可按模块生成结果栏。</div>`;
+        activeListEl.innerHTML = `<div class="empty-state">暂无模块。你可以把左侧模块拖进来，也可以直接点击模块卡片加入工作区。</div>`;
       }
 
       for (const module of activeModules) {
@@ -1872,16 +3138,27 @@
         card.className = "active-module";
         const rerunDisabledReason = moduleRerunDisabledReason(module);
         const progressText = module.state === "running" && module.progress ? formatModuleProgress(module.progress) : "";
+        const stateMode = projectStatusMode(module.state === "completed" ? "parsed" : module.state === "error" ? "error" : (module.state === "running" || module.state === "pending" ? "parsing" : "queued"));
         card.innerHTML = `
           <div class="row">
-            <div class="name">${esc(module.name)}</div>
+            <div>
+              <div class="name">${esc(module.name)}</div>
+              <div class="project-id">${esc(module.type)}</div>
+            </div>
             <div class="actions">
+              <span class="status ${stateMode}">${esc(module.state || "pending")}</span>
               <button class="tiny-btn secondary" type="button" data-action="rerun" data-id="${esc(moduleId(module))}" ${rerunDisabledReason ? "disabled" : ""} title="${esc(rerunDisabledReason || "重新执行该模块")}">重跑</button>
               <button class="tiny-btn" type="button" data-action="remove" data-id="${esc(moduleId(module))}">移除</button>
             </div>
           </div>
-          <div class="meta">type=${esc(module.type)} · state=${esc(module.state || "pending")}</div>
-          ${progressText ? `<div class="meta">progress=${esc(progressText)}</div>` : ""}
+          <div class="meta">
+            <div class="kv-grid">
+              <div class="kv-item"><div class="k">模块类型</div><div class="v">${esc(module.type)}</div></div>
+              <div class="kv-item"><div class="k">当前状态</div><div class="v">${esc(module.state || "pending")}</div></div>
+            </div>
+            ${module.description ? `<div class="kv-item"><div class="k">说明</div><div class="v">${esc(module.description)}</div></div>` : ""}
+            ${progressText ? `<div class="kv-item"><div class="k">进度</div><div class="v">${esc(progressText)}</div></div>` : ""}
+          </div>
         `;
         activeListEl.appendChild(card);
       }
@@ -2053,23 +3330,35 @@
 
     function stopPolling() {
       if (pollingTimer) {
-        clearInterval(pollingTimer);
+        clearTimeout(pollingTimer);
         pollingTimer = null;
       }
     }
 
-    function startPolling() {
+    function scheduleNextPoll(delay = currentPollDelay) {
       stopPolling();
-      pollingTimer = setInterval(pollOnce, 1000);
+      pollingTimer = setTimeout(() => {
+        pollOnce();
+      }, delay);
+    }
+
+    function startPolling(delay = 1000) {
+      currentPollDelay = delay;
+      scheduleNextPoll(delay);
     }
 
     async function pollOnce() {
       if (!currentJobId) return;
+      const polledJobId = currentJobId;
       try {
-        const resp = await fetch(`/api/jobs/${currentJobId}/status`);
+        const previousTlsSignature = tlsTaskSignature(latestStatus?.job?.tls_decrypt || null);
+        const resp = await fetch(`/api/jobs/${polledJobId}/status`);
         const payload = await resp.json();
         if (!resp.ok || !payload.ok) {
           throw new Error(payload?.detail || "状态查询失败");
+        }
+        if (currentJobId !== polledJobId) {
+          return;
         }
         latestStatus = payload;
         const job = payload.job;
@@ -2081,9 +3370,11 @@
         totalPacketCountEl.textContent = formatCount(totalPacketCount, job.source_packet_count_estimated);
         parseProgressEl.textContent = formatParseProgress(job);
         updateStepByJob(job);
-        syncModuleStatesFromStatus(job);
+        const modulesAdded = syncModuleStatesFromStatus(job);
         syncProjectCatalogFromJob(job);
         renderProjectCatalog();
+        const nextTlsSignature = tlsTaskSignature(job.tls_decrypt || null);
+        const tlsStateChanged = previousTlsSignature !== nextTlsSignature;
 
         if (totalPacketCount != null && totalPacketCount !== lastLoggedTotalPackets) {
           lastLoggedTotalPackets = totalPacketCount;
@@ -2092,20 +3383,31 @@
 
         if (job.revision !== lastRevision) {
           lastRevision = job.revision;
-          await fetchResults(job.revision);
+          await fetchResults(job.revision, polledJobId);
+        } else if (modulesAdded || tlsStateChanged) {
+          renderWorkspace();
         }
+        currentPollDelay = computeNextPollDelay(job);
       } catch (err) {
+        currentPollDelay = 2500;
         log(`轮询失败: ${err.message || err}`, "ERROR");
+      } finally {
+        if (currentJobId === polledJobId) {
+          scheduleNextPoll(currentPollDelay);
+        }
       }
     }
 
-    async function fetchResults(revisionHint) {
-      if (!currentJobId) return;
+    async function fetchResults(revisionHint, jobIdHint = currentJobId) {
+      if (!jobIdHint) return;
       try {
-        const resp = await fetch(`/api/jobs/${currentJobId}/results`);
+        const resp = await fetch(`/api/jobs/${jobIdHint}/results`);
         const payload = await resp.json();
         if (!resp.ok || !payload.ok) {
           throw new Error(payload?.detail || "结果查询失败");
+        }
+        if (currentJobId !== jobIdHint) {
+          return;
         }
         latestResults = payload;
         lastResultsRevision = payload.revision ?? revisionHint ?? lastResultsRevision;
@@ -2170,8 +3472,22 @@
 
     function syncModuleStatesFromStatus(job) {
       const map = {};
+      let modulesAdded = false;
       for (const module of job.modules || []) {
+        if (String(module.status || "").toLowerCase() === "stopped") {
+          continue;
+        }
         map[`${module.module_type}:${module.module_name}`] = module;
+        if (!activeModules.some((item) => moduleId(item) === `${module.module_type}:${module.module_name}`)) {
+          activeModules.push({
+            type: module.module_type,
+            name: module.module_name,
+            description: findModuleDescription(module.module_type, module.module_name),
+            state: module.status || "pending",
+            progress: module.progress || null,
+          });
+          modulesAdded = true;
+        }
       }
       for (const item of activeModules) {
         const snapshot = map[moduleId(item)];
@@ -2182,7 +3498,9 @@
           item.progress = null;
         }
       }
+      activeModules = activeModules.filter((item) => map[moduleId(item)] || item.state === "waiting_file");
       renderActiveModules();
+      return modulesAdded;
     }
 
     async function cleanupProjects({ projectIds = null, keepRecent = null, actionLabel = "项目清理" }) {
@@ -2224,14 +3542,29 @@
         log("请先勾选要删除的项目", "WARN");
         return;
       }
-      if (!window.confirm(`确认批量删除 ${projectIds.length} 个项目吗？不可删除的项目会自动跳过。`)) {
+      const confirmed = await openConfirmDialog({
+        title: "批量删除项目",
+        message: `将尝试删除 ${projectIds.length} 个项目；当前不可删除的项目会自动跳过。`,
+        meta: `项目数量: ${projectIds.length}\n项目列表: ${projectIds.join(", ")}`,
+        confirmLabel: "确认批量删除",
+        tone: "danger",
+      });
+      if (!confirmed) {
         return;
       }
       await cleanupProjects({ projectIds, actionLabel: "批量删除项目" });
     }
 
     async function clearDeletableProjects() {
-      if (!window.confirm("确认清空所有当前可删除的项目吗？运行中或解析中的项目会被跳过。")) {
+      const deletableCount = projectCatalog.filter((item) => item.can_delete).length;
+      const confirmed = await openConfirmDialog({
+        title: "清空可删项目",
+        message: "将清理当前所有允许删除的项目；运行中或解析中的项目会被自动跳过。",
+        meta: `可删除项目数: ${deletableCount}`,
+        confirmLabel: "确认清理",
+        tone: "danger",
+      });
+      if (!confirmed) {
         return;
       }
       await cleanupProjects({ keepRecent: 0, actionLabel: "清空可删项目" });
@@ -2243,7 +3576,14 @@
         log("保留数量必须是大于等于 0 的整数", "WARN");
         return;
       }
-      if (!window.confirm(`确认只保留最近 ${keepRecent} 个项目吗？其余可删除项目会被清理。`)) {
+      const confirmed = await openConfirmDialog({
+        title: "仅保留最近项目",
+        message: `将尝试仅保留最近 ${keepRecent} 个项目，其余当前可删除项目会被清理。`,
+        meta: `保留数量: ${keepRecent}\n当前项目总数: ${projectCatalog.length}`,
+        confirmLabel: "确认执行",
+        tone: "warn",
+      });
+      if (!confirmed) {
         return;
       }
       await cleanupProjects({ keepRecent, actionLabel: `保留最近 ${keepRecent} 个项目` });
@@ -2345,6 +3685,9 @@
       renderRawPane();
       renderModulePanes();
 
+      if (!tabs.length) {
+        resultPanes.innerHTML = `<div class="empty-state">当前没有可展示的结果。</div>`;
+      }
       switchTab(currentResultTabId);
     }
 
@@ -2642,6 +3985,14 @@
         renderHTTPPane(pane, module, result);
         return;
       }
+      if (module.name === "USB") {
+        renderUSBPane(pane, module, result);
+        return;
+      }
+      if (module.name === "TLS") {
+        renderTLSPane(pane, module, result);
+        return;
+      }
       if (module.name === "DNS") {
         renderDNSPane(pane, module, result);
         return;
@@ -2687,8 +4038,27 @@
 
     function renderHTTPPane(pane, module, result) {
       const detail = result.detail || {};
+      const resultMeta = result.meta || {};
       const requests = Array.isArray(detail.requests) ? detail.requests : [];
+      const uploads = Array.isArray(detail.uploads) ? detail.uploads : [];
       const requestCount = Number(detail.request_count || 0);
+      const uploadCount = Number(detail.upload_count || uploads.length || 0);
+      const topUploadFilenames = Array.isArray(detail.top_upload_filenames) ? detail.top_upload_filenames : [];
+      const topUploadFilenamesTotal = Number(detail.top_upload_filenames_total || topUploadFilenames.length || 0);
+      const uploadPoints = Array.isArray(detail.upload_points) ? detail.upload_points : [];
+      const uploadPointsTotal = Number(detail.upload_points_total || uploadPoints.length || 0);
+      const uploadFilesExported = Number(
+        detail.upload_files_exported || uploads.filter((item) => String(item?.url || "").trim()).length || 0
+      );
+      const uploadTargetsTotal = Number(
+        detail.upload_targets_total
+        || new Set(
+          uploadPoints
+            .map((item) => String(item?.server_ip || item?.host || "").trim())
+            .filter(Boolean)
+        ).size
+        || 0
+      );
       const requestsCoverAll = requestCount > 0 && requests.length >= requestCount;
       const topStatusCodes = Array.isArray(detail.top_status_codes) ? detail.top_status_codes : [];
       const topStatusCodesTotal = Number(detail.top_status_codes_total || topStatusCodes.length || 0);
@@ -2765,7 +4135,7 @@
       const pathLimitOptions = buildLimitOptions(topPaths.length);
 
       pane.innerHTML = `
-        <div class="muted" style="margin-bottom:8px;">HTTP 协议解析</div>
+        <div class="muted" style="margin-bottom:8px;">HTTP 协议解析${resultMeta.source === "tls_decrypt" ? " · 当前结果来自 TLS 解密重跑" : ""}</div>
         <details class="data" open>
           <summary>主机统计</summary>
           <div style="padding-top:10px;">
@@ -2794,6 +4164,12 @@
           <summary>响应码统计</summary>
           <div style="padding-top:10px;">
             <div data-role="http-status-content"></div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>POST 文件上传</summary>
+          <div style="padding-top:10px;">
+            <div data-role="http-uploads-content"></div>
           </div>
         </details>
         <details class="data" open>
@@ -2839,6 +4215,7 @@
       const hostsContent = pane.querySelector('[data-role="http-hosts-content"]');
       const pathsContent = pane.querySelector('[data-role="http-paths-content"]');
       const statusContent = pane.querySelector('[data-role="http-status-content"]');
+      const uploadsContent = pane.querySelector('[data-role="http-uploads-content"]');
       const siteContent = pane.querySelector('[data-role="http-site-content"]');
       const filterDirection = pane.querySelector("#http-filter-direction");
       const filterMethod = pane.querySelector("#http-filter-method");
@@ -3088,6 +4465,7 @@
             row.status_code,
             row.content_type,
             row.payload_preview,
+            row.upload_summary,
           ].map((item) => String(item || "").toLowerCase()).join("\n");
           return haystack.includes(keyword);
         });
@@ -3115,6 +4493,135 @@
               <tbody>${body}</tbody>
             </table>
           </div>
+        `;
+      };
+
+      const renderUploads = () => {
+        if (!uploadsContent) return;
+        const points = uploadPoints.slice(0, 120);
+        const rankingBody = topUploadFilenames.length
+          ? topUploadFilenames.map((item) => `<tr><td>${esc(item[0])}</td><td>${esc(String(item[1]))}</td></tr>`).join("")
+          : `<tr><td colspan="2" class="muted">当前没有识别到带文件名的上传记录</td></tr>`;
+        const uploadRows = uploads.slice(0, 120);
+        const uploadPointCards = points.length
+          ? points.map((point) => {
+              const files = Array.isArray(point?.files) ? point.files : [];
+              const pointPath = String(point?.uri_path || point?.uri || "/").trim() || "/";
+              const pointMeta = [
+                point?.server_ip ? `server_ip=${point.server_ip}` : "",
+                point?.host ? `host=${point.host}` : "",
+                point?.request_count != null ? `requests=${point.request_count}` : "",
+                point?.upload_count != null ? `files=${point.upload_count}` : "",
+                point?.exported_count != null ? `exported=${point.exported_count}` : "",
+              ].filter(Boolean);
+              const fileBody = files.length
+                ? files.map((item) => {
+                    const viewerUrl = String(item?.viewer_url || "").trim();
+                    const rawUrl = String(item?.url || "").trim();
+                    const downloadName = String(item?.filename || item?.saved_name || item?.field_name || "upload.bin");
+                    const actions = [];
+                    if (viewerUrl) {
+                      actions.push(
+                        `<a href="${esc(viewerUrl)}" target="_blank" rel="noopener noreferrer">查看</a>`
+                      );
+                    }
+                    if (rawUrl) {
+                      actions.push(
+                        `<a href="${esc(rawUrl)}" download="${esc(downloadName)}">下载</a>`
+                      );
+                    }
+                    return `
+                      <tr>
+                        <td>${esc(item.packet_index)}</td>
+                        <td>${esc(item.field_name || "")}</td>
+                        <td>${esc(item.filename || item.saved_name || "")}</td>
+                        <td>${esc(item.content_type || "")}</td>
+                        <td>${esc(String(item.size || 0))}</td>
+                        <td>${esc(item.preview || "")}</td>
+                        <td>${actions.length ? actions.join(" / ") : `<span class="muted">未导出</span>`}</td>
+                      </tr>
+                    `;
+                  }).join("")
+                : `<tr><td colspan="7" class="muted">当前上传点没有可展示的文件</td></tr>`;
+              return `
+                <div class="http-site-group">
+                  <details class="http-site-node" open>
+                    <summary>
+                      <span>${esc(`${String(point?.method || "POST").toUpperCase()} ${pointPath}`)}</span>
+                      ${pointMeta.length ? `<span class="http-site-meta">${esc(pointMeta.join(" | "))}</span>` : ""}
+                    </summary>
+                    <div class="http-site-branch">
+                      <div class="scroll-box">
+                        <table>
+                          <thead>
+                            <tr><th>packet</th><th>field</th><th>filename</th><th>content_type</th><th>size</th><th>preview</th><th>artifact</th></tr>
+                          </thead>
+                          <tbody>${fileBody}</tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              `;
+            }).join("")
+          : "";
+        const uploadBody = uploadRows.length
+          ? uploadRows.map((item) => `
+              <tr>
+                <td>${esc(item.packet_index)}</td>
+                <td>${esc(item.method || "")}</td>
+                <td>${esc(item.host || "")}</td>
+                <td>${esc(item.uri || "")}</td>
+                <td>${esc(item.field_name || "")}</td>
+                <td>${esc(item.filename || "")}</td>
+                <td>${esc(item.part_content_type || item.request_content_type || "")}</td>
+                <td>${esc(String(item.size || 0))}</td>
+                <td>${esc(item.preview || "")}</td>
+                <td>${String(item.url || "").trim() ? `<a href="${esc(String(item.url || ""))}" download="${esc(String(item.filename || item.saved_name || "upload.bin"))}">下载</a>` : `<span class="muted">未导出</span>`}</td>
+              </tr>
+            `).join("")
+          : `<tr><td colspan="10" class="muted">当前没有识别到 HTTP 文件上传</td></tr>`;
+
+        uploadsContent.innerHTML = `
+          <div class="ws-meta-grid" style="margin-bottom:10px;">
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">上传记录</div>
+              <div class="ws-meta-body">${esc(String(uploadCount))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">上传点</div>
+              <div class="ws-meta-body">${esc(String(uploadPointsTotal || uploadPoints.length || 0))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">已导出文件</div>
+              <div class="ws-meta-body">${esc(String(uploadFilesExported))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">目标</div>
+              <div class="ws-meta-body">${esc(String(uploadTargetsTotal || 0))}</div>
+            </div>
+          </div>
+          ${uploadPointCards
+            ? `<div class="http-site-scroll" style="margin-bottom:10px;">${uploadPointCards}</div>`
+            : `<div class="overview-empty" style="margin-bottom:10px;">当前没有识别到可重建的 HTTP 上传点。</div>`}
+          <details class="data" open>
+            <summary>上传文件名统计</summary>
+            <table>
+              <thead><tr><th>filename</th><th>count</th></tr></thead>
+              <tbody>${rankingBody}</tbody>
+            </table>
+          </details>
+          <details class="data" open>
+            <summary>上传明细 (${esc(String(uploadRows.length))}${uploadCount > uploadRows.length ? ` / ${esc(String(uploadCount))}` : ""})</summary>
+            <div class="scroll-box">
+              <table>
+                <thead>
+                  <tr><th>packet</th><th>method</th><th>host</th><th>uri</th><th>field</th><th>filename</th><th>content_type</th><th>size</th><th>preview</th><th>artifact</th></tr>
+                </thead>
+                <tbody>${uploadBody}</tbody>
+              </table>
+            </div>
+          </details>
         `;
       };
 
@@ -3149,8 +4656,852 @@
       if (statusContent) {
         renderRankingTable(statusContent, topStatusCodes, topStatusCodesTotal, "__all__", "无响应码数据");
       }
+      renderUploads();
       renderSitePages();
       renderFilteredRequests();
+    }
+
+    function renderUSBPane(pane, module, result) {
+      const detail = result.detail || {};
+      const state = getPaneUiState(`protocol:${module.name}`, {
+        flipYAxis: false,
+      });
+      const devices = Array.isArray(detail.devices) ? detail.devices : [];
+      const mouse = detail.mouse || {};
+      const keyboard = detail.keyboard || {};
+      const storage = detail.storage || {};
+      const exfat = storage.exfat || {};
+      const mouseReports = Array.isArray(mouse.reports) ? mouse.reports : [];
+      const mousePoints = Array.isArray(mouse.trace_points) ? mouse.trace_points : [];
+      const mouseDrawSegments = Array.isArray(mouse.draw_segments) ? mouse.draw_segments : [];
+      const keyboardReports = Array.isArray(keyboard.reports) ? keyboard.reports : [];
+      const keyboardEvents = Array.isArray(keyboard.events) ? keyboard.events : [];
+      const storageCommands = Array.isArray(storage.commands) ? storage.commands : [];
+      const storageWrites = Array.isArray(storage.writes) ? storage.writes : [];
+      const exfatFiles = Array.isArray(exfat.files) ? exfat.files : [];
+      const writeExportCount = Number(storage.write_export_count || storageWrites.filter((item) => String(item?.url || "").trim()).length || 0);
+      const exfatExportedFileCount = Number(exfat.exported_file_count || exfatFiles.filter((item) => String(item?.url || "").trim()).length || 0);
+      const fullText = String(keyboard.full_text || "");
+      const editedText = String(keyboard.edited_text || "");
+
+      const renderUsbTrace = () => {
+        if (!mousePoints.length && !mouseDrawSegments.length) {
+          return `<div class="muted">当前没有可绘制的鼠标轨迹。</div>`;
+        }
+        const traceBounds = mouse.draw_bbox || mouse.bbox || {};
+        const fallbackPoints = mouseDrawSegments.length
+          ? mouseDrawSegments.flatMap((segment) => Array.isArray(segment.points) ? segment.points : [])
+          : mousePoints;
+        const xs = fallbackPoints.map((item) => Number(item.x || 0));
+        const ys = fallbackPoints.map((item) => Number(item.y || 0));
+        const minX = Number(traceBounds.min_x ?? Math.min(...xs, 0));
+        const maxX = Number(traceBounds.max_x ?? Math.max(...xs, 0));
+        const minY = Number(traceBounds.min_y ?? Math.min(...ys, 0));
+        const maxY = Number(traceBounds.max_y ?? Math.max(...ys, 0));
+        const width = 760;
+        const height = 320;
+        const pad = 18;
+        const spanX = Math.max(1, maxX - minX);
+        const spanY = Math.max(1, maxY - minY);
+        const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
+
+        const toPointsAttr = (points) => points.map((item) => {
+          const px = ((Number(item.x || 0) - minX) * scale + pad).toFixed(2);
+          const yOffset = (Number(item.y || 0) - minY) * scale;
+          const py = state.flipYAxis
+            ? (yOffset + pad).toFixed(2)
+            : (height - pad - yOffset).toFixed(2);
+          return `${px},${py}`;
+        }).join(" ");
+
+        const backgroundTrace = mousePoints.length >= 2 ? `
+          <polyline
+            fill="none"
+            stroke="#64748b"
+            stroke-opacity="0.28"
+            stroke-width="1.1"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            points="${esc(toPointsAttr(mousePoints))}"
+          ></polyline>
+        ` : "";
+        const drawTrace = mouseDrawSegments
+          .map((segment) => Array.isArray(segment.points) ? segment.points : [])
+          .filter((points) => points.length >= 2)
+          .map((points) => `
+            <polyline
+              fill="none"
+              stroke="#38bdf8"
+              stroke-width="1.8"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              points="${esc(toPointsAttr(points))}"
+            ></polyline>
+          `)
+          .join("");
+        const fallbackTraceOnly = !drawTrace && mousePoints.length >= 2 ? `
+          <polyline
+            fill="none"
+            stroke="#38bdf8"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            points="${esc(toPointsAttr(mousePoints))}"
+          ></polyline>
+        ` : "";
+        const traceHint = mouseDrawSegments.length
+          ? `蓝色为左键按下时的绘制笔画，共 ${mouse.draw_segment_count || mouseDrawSegments.length} 段；已过滤 ${mouse.draw_noise_segment_count || 0} 个过短噪声段。灰色背景是完整移动轨迹。`
+          : `当前未识别到有效按压笔画，下面显示的是完整移动轨迹。`;
+        return `
+          <div class="ws-filter-row" style="margin-bottom:8px;">
+            <label>显示选项</label>
+            <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+              <input type="checkbox" data-role="usb-flip-y-axis"${state.flipYAxis ? " checked" : ""}>
+              <span>翻转 Y 轴</span>
+            </label>
+          </div>
+          <div class="scroll-box" style="padding:8px;background:rgba(255,255,255,0.02);">
+            <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="USB 鼠标轨迹图">
+              <rect x="0" y="0" width="${width}" height="${height}" rx="8" fill="rgba(15,23,42,0.65)"></rect>
+              ${backgroundTrace}
+              ${drawTrace || fallbackTraceOnly}
+            </svg>
+            <div class="muted" style="margin-top:8px;">${esc(`${traceHint} 当前方向：${state.flipYAxis ? "已翻转 Y 轴" : "默认 Y 轴"}`)}</div>
+          </div>
+        `;
+      };
+
+      const renderDevices = () => {
+        if (!devices.length) {
+          return `<div class="muted">当前没有可用的 USB 设备画像。</div>`;
+        }
+        const body = devices.map((item) => `
+          <tr>
+            <td>${esc(item.device_address)}</td>
+            <td>${esc(item.vendor_id || "-")}</td>
+            <td>${esc(item.product_id || "-")}</td>
+            <td>${esc((item.roles || []).join(", ") || "-")}</td>
+            <td>${esc(String(item.report_count || 0))}</td>
+            <td>${esc(String(item.mouse_report_count || 0))}</td>
+            <td>${esc(String(item.keyboard_report_count || 0))}</td>
+            <td>${esc(String(item.storage_command_count || 0))}</td>
+            <td>${esc(String(item.storage_write_count || 0))}</td>
+          </tr>
+        `).join("");
+        return `
+          <table>
+            <thead><tr><th>device</th><th>vendor</th><th>product</th><th>roles</th><th>reports</th><th>mouse</th><th>keyboard</th><th>storage cmd</th><th>storage write</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        `;
+      };
+
+      const renderMouseRows = () => {
+        if (!mouseReports.length) {
+          return `<tr><td colspan="9" class="muted">当前没有识别到鼠标 HID 报文</td></tr>`;
+        }
+        return mouseReports.slice(0, 200).map((item) => `
+          <tr>
+            <td>${esc(item.packet_index)}</td>
+            <td>${esc(item.device_address || "-")}</td>
+            <td>${esc(String(item.buttons || 0))}</td>
+            <td>${esc(String(item.dx || 0))}</td>
+            <td>${esc(String(item.dy || 0))}</td>
+            <td>${esc(String(item.wheel || 0))}</td>
+            <td>${esc(String(item.x || 0))}</td>
+            <td>${esc(String(item.y || 0))}</td>
+            <td>${esc(item.report_hex || "")}</td>
+          </tr>
+        `).join("");
+      };
+
+      const renderKeyboardRows = () => {
+        if (!keyboardEvents.length) {
+          return `<tr><td colspan="7" class="muted">当前没有识别到键盘 HID 按键事件</td></tr>`;
+        }
+        return keyboardEvents.slice(0, 200).map((item) => `
+          <tr>
+            <td>${esc(item.packet_index)}</td>
+            <td>${esc(item.device_address || "-")}</td>
+            <td>${esc(item.keycode_hex || "-")}</td>
+            <td>${esc(item.label || "-")}</td>
+            <td>${esc(item.token || "")}</td>
+            <td>${esc(item.shift ? "Y" : "")}</td>
+            <td>${esc(item.ctrl ? "Y" : "")}${item.alt ? "/A" : ""}</td>
+          </tr>
+        `).join("");
+      };
+
+      const renderStorageCommandRows = () => {
+        if (!storageCommands.length) {
+          return `<tr><td colspan="11" class="muted">当前没有识别到 USB Mass Storage 命令</td></tr>`;
+        }
+        return storageCommands.slice(0, 200).map((item) => `
+          <tr>
+            <td>${esc(item.cbw_packet_index)}</td>
+            <td>${esc(item.device_address || "-")}</td>
+            <td>${esc(item.tag || "-")}</td>
+            <td>${esc(item.opcode_name || item.opcode || "-")}</td>
+            <td>${esc(item.direction || "-")}</td>
+            <td>${esc(item.lba == null ? "-" : String(item.lba))}</td>
+            <td>${esc(item.transfer_blocks == null ? "-" : String(item.transfer_blocks))}</td>
+            <td>${esc(String(item.payload_length || 0))}</td>
+            <td>${esc(item.status_text || "-")}</td>
+            <td>${esc(item.complete ? "Y" : "N")}</td>
+            <td>${esc(item.payload_preview_hex || "")}</td>
+          </tr>
+        `).join("");
+      };
+
+      const renderStorageWriteRows = () => {
+        if (!storageWrites.length) {
+          return `<tr><td colspan="9" class="muted">当前没有可重建的写入区间</td></tr>`;
+        }
+        return storageWrites.slice(0, 200).map((item) => `
+          <tr>
+            <td>${esc(item.cbw_packet_index)}</td>
+            <td>${esc(item.device_address || "-")}</td>
+            <td>${esc(item.opcode_name || item.opcode || "-")}</td>
+            <td>${esc(String(item.block_size || 0))}</td>
+            <td>${esc(String(item.sector_count || 0))}</td>
+            <td>${esc(String(item.first_lba || 0))}</td>
+            <td>${esc(String(item.last_lba || 0))}</td>
+            <td>${esc(item.payload_sha1 || "-")}</td>
+            <td>${String(item.viewer_url || "").trim() ? `<a href="${esc(String(item.viewer_url || ""))}" target="_blank" rel="noopener noreferrer">查看</a> / <a href="${esc(String(item.url || ""))}" download="${esc(String(item.saved_name || "write.bin"))}">下载</a>` : `<span class="muted">未导出</span>`}</td>
+          </tr>
+        `).join("");
+      };
+
+      const renderExfatFiles = () => {
+        if (!exfat.detected) {
+          return `<div class="muted">当前写入结果里没有识别到 exFAT 文件系统。</div>`;
+        }
+        const meta = `
+          <div class="ws-meta-grid" style="margin-bottom:10px;">
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">Boot LBA</div>
+              <div class="ws-meta-body">${esc(String(exfat.boot_lba || 0))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">Root LBA</div>
+              <div class="ws-meta-body">${esc(String(exfat.root_dir_first_lba || 0))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">Bytes/Sector</div>
+              <div class="ws-meta-body">${esc(String(exfat.bytes_per_sector || 0))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">Files</div>
+              <div class="ws-meta-body">${esc(String(exfat.file_count || 0))}</div>
+            </div>
+            <div class="ws-meta-card">
+              <div class="ws-meta-label">Exported</div>
+              <div class="ws-meta-body">${esc(String(exfatExportedFileCount))}</div>
+            </div>
+          </div>
+        `;
+        const table = exfatFiles.length ? `
+          <div class="scroll-box">
+            <table>
+              <thead><tr><th>filename</th><th>size</th><th>cluster</th><th>first lba</th><th>entry lba</th><th>slot</th><th>state</th><th>artifact</th></tr></thead>
+              <tbody>
+                ${exfatFiles.slice(0, 200).map((item) => `
+                  <tr>
+                    <td>${esc(item.filename || "-")}</td>
+                    <td>${esc(String(item.size || 0))}</td>
+                    <td>${esc(item.start_cluster == null ? "-" : String(item.start_cluster))}</td>
+                    <td>${esc(item.first_lba == null ? "-" : String(item.first_lba))}</td>
+                    <td>${esc(item.entry_lba == null ? "-" : String(item.entry_lba))}</td>
+                    <td>${esc(item.entry_slot == null ? "-" : String(item.entry_slot))}</td>
+                    <td>${esc(String(item.export_status || (item.incomplete ? "incomplete" : "ok")))}</td>
+                    <td>${String(item.viewer_url || "").trim() ? `<a href="${esc(String(item.viewer_url || ""))}" target="_blank" rel="noopener noreferrer">查看</a> / <a href="${esc(String(item.url || ""))}" download="${esc(String(item.saved_name || item.filename || "file.bin"))}">下载</a>` : `<span class="muted">未导出</span>`}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : `<div class="muted">当前 exFAT 根目录里没有解析出文件条目。</div>`;
+        return `${meta}${table}`;
+      };
+
+      pane.innerHTML = `
+        <div class="muted" style="margin-bottom:8px;">USB / HID 协议解析</div>
+        <div class="ws-meta-grid" style="margin-bottom:10px;">
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">USB 事件</div>
+            <div class="ws-meta-body">${esc(String(detail.record_count || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">HID 报文</div>
+            <div class="ws-meta-body">${esc(String(detail.hid_report_count || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">鼠标报文</div>
+            <div class="ws-meta-body">${esc(String(mouse.report_count || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">有效笔画</div>
+            <div class="ws-meta-body">${esc(String(mouse.draw_segment_count || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">键盘报文</div>
+            <div class="ws-meta-body">${esc(String(keyboard.report_count || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">存储命令</div>
+            <div class="ws-meta-body">${esc(String(storage.command_count || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">写入导出</div>
+            <div class="ws-meta-body">${esc(String(writeExportCount))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">exFAT 文件</div>
+            <div class="ws-meta-body">${esc(String(exfat.file_count || 0))}</div>
+          </div>
+          <div class="ws-meta-card">
+            <div class="ws-meta-label">文件导出</div>
+            <div class="ws-meta-body">${esc(String(exfatExportedFileCount))}</div>
+          </div>
+        </div>
+        <details class="data" open>
+          <summary>设备画像</summary>
+          <div style="padding-top:10px;">${renderDevices()}</div>
+        </details>
+        <details class="data" open>
+          <summary>鼠标轨迹</summary>
+          <div style="padding-top:10px;">${renderUsbTrace()}</div>
+        </details>
+        <details class="data" open>
+          <summary>鼠标报文</summary>
+          <div class="scroll-box" style="padding-top:10px;">
+            <table>
+              <thead><tr><th>packet</th><th>device</th><th>buttons</th><th>dx</th><th>dy</th><th>wheel</th><th>x</th><th>y</th><th>report</th></tr></thead>
+              <tbody>${renderMouseRows()}</tbody>
+            </table>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>键盘完整流</summary>
+          <div style="padding-top:10px;">
+            ${fullText ? `<pre class="ws-pre-block">${esc(fullText)}</pre>` : `<div class="muted">当前没有识别到键盘完整流。</div>`}
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>键盘重放结果</summary>
+          <div style="padding-top:10px;">
+            ${editedText ? `<pre class="ws-pre-block">${esc(editedText)}</pre>` : `<div class="muted">当前没有可重放的键盘结果。</div>`}
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>键盘事件</summary>
+          <div class="scroll-box" style="padding-top:10px;">
+            <table>
+              <thead><tr><th>packet</th><th>device</th><th>keycode</th><th>label</th><th>token</th><th>shift</th><th>ctrl/alt</th></tr></thead>
+              <tbody>${renderKeyboardRows()}</tbody>
+            </table>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>Mass Storage 命令</summary>
+          <div class="scroll-box" style="padding-top:10px;">
+            <table>
+              <thead><tr><th>cbw</th><th>device</th><th>tag</th><th>opcode</th><th>dir</th><th>lba</th><th>blocks</th><th>payload</th><th>status</th><th>done</th><th>preview</th></tr></thead>
+              <tbody>${renderStorageCommandRows()}</tbody>
+            </table>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>重建写入</summary>
+          <div class="scroll-box" style="padding-top:10px;">
+            <table>
+              <thead><tr><th>cbw</th><th>device</th><th>opcode</th><th>block</th><th>sectors</th><th>first lba</th><th>last lba</th><th>sha1</th><th>artifact</th></tr></thead>
+              <tbody>${renderStorageWriteRows()}</tbody>
+            </table>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>exFAT 根目录</summary>
+          <div style="padding-top:10px;">${renderExfatFiles()}</div>
+        </details>
+      `;
+
+      const flipYAxisInput = pane.querySelector('[data-role="usb-flip-y-axis"]');
+      if (flipYAxisInput) {
+        flipYAxisInput.addEventListener("change", () => {
+          state.flipYAxis = Boolean(flipYAxisInput.checked);
+          renderUSBPane(pane, module, result);
+        });
+      }
+    }
+
+    function renderTLSPane(pane, module, result) {
+      const detail = result.detail || {};
+      const sessions = Array.isArray(detail.sessions) ? detail.sessions : [];
+      const topSni = Array.isArray(detail.top_sni) ? detail.top_sni : [];
+      const state = getPaneUiState(`protocol:${module.name}`, {
+        tlsKeyText: "",
+        tlsKeyFile: null,
+        tlsKeyFileName: "",
+        tlsLoading: false,
+        tlsTaskId: "",
+        tlsProgress: null,
+        tlsPollTimer: null,
+        tlsError: "",
+        tlsResult: null,
+      });
+      const liveTlsTask = latestStatus?.job?.tls_decrypt || null;
+
+      const tlsTaskTimestamp = (task) => {
+        const value = String(
+          task?.updated_at
+          || task?.finished_at
+          || task?.started_at
+          || task?.created_at
+          || ""
+        ).trim();
+        const millis = value ? Date.parse(value) : NaN;
+        return Number.isFinite(millis) ? millis : 0;
+      };
+      const shouldHydrateLiveTlsTask = (() => {
+        if (!liveTlsTask) return false;
+        if (!state.tlsTaskId) return true;
+        if (state.tlsTaskId !== String(liveTlsTask.task_id || "")) {
+          return String(liveTlsTask.status || "") === "running";
+        }
+        return tlsTaskTimestamp(liveTlsTask) >= tlsTaskTimestamp(state.tlsProgress);
+      })();
+
+      if (shouldHydrateLiveTlsTask) {
+        state.tlsTaskId = String(liveTlsTask.task_id || state.tlsTaskId || "");
+        state.tlsProgress = liveTlsTask;
+        if (liveTlsTask.status === "running") {
+          state.tlsLoading = true;
+        } else if (liveTlsTask.status === "completed") {
+          state.tlsLoading = false;
+          state.tlsResult = liveTlsTask.result || state.tlsResult;
+          state.tlsError = "";
+        } else if (liveTlsTask.status === "error") {
+          state.tlsLoading = false;
+          state.tlsError = liveTlsTask.error || liveTlsTask.message || state.tlsError;
+        }
+      }
+
+      const renderSniTable = (rows, emptyText) => {
+        if (!rows.length) {
+          return `<div class="muted">${esc(emptyText)}</div>`;
+        }
+        return `
+          <table>
+            <thead><tr><th>SNI</th><th>count</th></tr></thead>
+            <tbody>${rows.map((item) => `<tr><td>${esc(item[0])}</td><td>${esc(String(item[1]))}</td></tr>`).join("")}</tbody>
+          </table>
+        `;
+      };
+
+      const renderTlsRequestTable = (rows, emptyText) => {
+        if (!rows.length) {
+          return `<div class="muted">${esc(emptyText)}</div>`;
+        }
+        return `
+          <div class="scroll-box">
+            <table>
+              <thead><tr><th>packet</th><th>method</th><th>host</th><th>uri</th><th>content_type</th><th>payload</th></tr></thead>
+              <tbody>
+                ${rows.map((item) => `
+                  <tr>
+                    <td>${esc(item.packet_index)}</td>
+                    <td>${esc(item.method || "")}</td>
+                    <td>${esc(item.host || "")}</td>
+                    <td>${esc(item.uri || "")}</td>
+                    <td>${esc(item.content_type || "")}</td>
+                    <td>${esc(item.payload_preview || "")}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      };
+
+      const renderTlsUploadTable = (rows, emptyText) => {
+        if (!rows.length) {
+          return `<div class="muted">${esc(emptyText)}</div>`;
+        }
+        return `
+          <div class="scroll-box">
+            <table>
+              <thead><tr><th>packet</th><th>uri</th><th>field</th><th>filename</th><th>content_type</th><th>size</th><th>preview</th></tr></thead>
+              <tbody>
+                ${rows.map((item) => `
+                  <tr>
+                    <td>${esc(item.packet_index)}</td>
+                    <td>${esc(item.uri || "")}</td>
+                    <td>${esc(item.field_name || "")}</td>
+                    <td>${esc(item.filename || "")}</td>
+                    <td>${esc(item.part_content_type || item.request_content_type || "")}</td>
+                    <td>${esc(String(item.size || 0))}</td>
+                    <td>${esc(item.preview || "")}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      };
+
+      const tlsFileMetaText = () => (
+        state.tlsKeyFileName
+          ? `当前已选择 keylog 文件: ${state.tlsKeyFileName}`
+          : "支持直接粘贴 keylog、输入本地文件路径，或上传 keylog 文件。"
+      );
+
+      const formatDuration = (elapsedMs) => {
+        const value = Number(elapsedMs || 0);
+        if (!Number.isFinite(value) || value <= 0) return "-";
+        if (value < 1000) return `${Math.round(value)} ms`;
+        const seconds = value / 1000;
+        if (seconds < 60) return `${seconds.toFixed(1)} s`;
+        const minutes = Math.floor(seconds / 60);
+        const remainSeconds = Math.round(seconds % 60);
+        return `${minutes}m ${remainSeconds}s`;
+      };
+
+      const tlsStageLabel = (stage) => ({
+        idle: "待开始",
+        initializing: "准备任务",
+        packet_read: "重新读取 pcap",
+        finalizing: "整理 TLS / HTTP 结果",
+        completed: "已完成",
+        error: "失败",
+      }[String(stage || "").trim()] || String(stage || "处理中"));
+
+      const renderTlsTaskCard = (task) => {
+        if (!task) return "";
+        const progress = task.progress || {};
+        const processed = Number(progress.processed || 0);
+        const total = progress.total != null ? Number(progress.total) : null;
+        const percent = progress.percent != null
+          ? Number(progress.percent)
+          : (total != null && total > 0 ? (processed / total) * 100 : null);
+        const normalizedPercent = percent != null && Number.isFinite(percent)
+          ? Math.max(0, Math.min(100, percent))
+          : null;
+        const barWidth = normalizedPercent != null
+          ? Math.max(2, normalizedPercent)
+          : (String(task.status || "") === "completed" ? 100 : (String(task.status || "") === "running" ? 35 : 0));
+        const progressText = total != null && Number.isFinite(total) && total > 0
+          ? `${processed.toLocaleString()} / ${total.toLocaleString()}${normalizedPercent != null ? ` (${normalizedPercent.toFixed(2)}%)` : ""}`
+          : processed > 0 ? processed.toLocaleString() : "-";
+        const updatedAt = progress.updated_at ? new Date(progress.updated_at).toLocaleTimeString() : "-";
+
+        return `
+          <div class="ws-godzilla-result">
+            <div class="ws-godzilla-kv">
+              <div class="item"><div class="k">任务状态</div><div class="v">${esc(String(task.status || "-"))}</div></div>
+              <div class="item"><div class="k">当前阶段</div><div class="v">${esc(tlsStageLabel(task.stage))}</div></div>
+              <div class="item"><div class="k">解析进度</div><div class="v">${esc(progressText)}</div></div>
+              <div class="item"><div class="k">已用时</div><div class="v">${esc(formatDuration(task.elapsed_ms))}</div></div>
+            </div>
+            <div class="ws-progress-track"><div class="ws-progress-fill" style="width:${esc(String(barWidth))}%"></div></div>
+            <div class="ws-progress-caption">
+              <span>${esc(task.message || "正在执行 TLS 解密任务")}</span>
+              <span>最近刷新: ${esc(updatedAt)}</span>
+            </div>
+          </div>
+        `;
+      };
+
+      const renderTlsDecryptResult = () => {
+        const task = state.tlsProgress || liveTlsTask || null;
+        const taskCard = renderTlsTaskCard(task);
+        if (state.tlsError) {
+          return `${taskCard}<div class="ws-godzilla-meta" style="color:#fca5a5;">${esc(state.tlsError)}</div>`;
+        }
+        if (state.tlsLoading) {
+          return taskCard || `<div class="ws-godzilla-meta">正在尝试解密 TLS 流量...</div>`;
+        }
+        const payload = state.tlsResult || task?.result || null;
+        if (!payload) {
+          return `<div class="ws-godzilla-meta">上传 keylog 后，这里会展示解密得到的 HTTP 请求、文件上传和命中的 flag。</div>`;
+        }
+
+        const sourceMeta = payload.keylog_source || {};
+        const summary = payload.summary || {};
+        const tlsDetail = payload.tls_detail || {};
+        const httpDetail = payload.http_detail || {};
+        const decryptedRequests = Array.isArray(httpDetail.requests) ? httpDetail.requests : [];
+        const decryptedUploads = Array.isArray(httpDetail.uploads) ? httpDetail.uploads : [];
+        const decryptedTopSni = Array.isArray(tlsDetail.top_sni) ? tlsDetail.top_sni : [];
+        const flagHits = Array.isArray(payload.flag_hits) ? payload.flag_hits : [];
+        const sourceText = [
+          String(sourceMeta.mode || ""),
+          sourceMeta.label ? String(sourceMeta.label) : "",
+          sourceMeta.line_count != null ? `lines=${sourceMeta.line_count}` : "",
+        ].filter(Boolean).join(" | ");
+
+        return `
+          ${taskCard}
+          <div class="ws-godzilla-result">
+            <div class="ws-godzilla-kv">
+              <div class="item"><div class="k">keylog 来源</div><div class="v">${esc(sourceText || "-")}</div></div>
+              <div class="item"><div class="k">TLS 会话</div><div class="v">${esc(String(summary.tls_session_count || 0))}</div></div>
+              <div class="item"><div class="k">HTTP 记录</div><div class="v">${esc(String(summary.http_request_count || 0))}</div></div>
+              <div class="item"><div class="k">HTTP 上传</div><div class="v">${esc(String(summary.http_upload_count || 0))}</div></div>
+              <div class="item"><div class="k">flag 命中</div><div class="v">${esc(String(summary.flag_hit_count || 0))}</div></div>
+            </div>
+          </div>
+          <details class="data" open>
+            <summary>命中 Flag</summary>
+            <div style="padding-top:10px;">
+              ${flagHits.length ? flagHits.map((item) => `<pre class="ws-pre-block">${esc(item)}</pre>`).join("") : `<div class="muted">当前没有在解密结果里命中 flag 形态文本。</div>`}
+            </div>
+          </details>
+          <details class="data" open>
+            <summary>解密后的 SNI 统计</summary>
+            <div style="padding-top:10px;">${renderSniTable(decryptedTopSni, "当前没有可展示的 SNI")}</div>
+          </details>
+          <details class="data" open>
+            <summary>解密后的 HTTP 请求</summary>
+            <div style="padding-top:10px;">${renderTlsRequestTable(decryptedRequests.slice(0, 120), "当前没有解密出 HTTP 请求")}</div>
+          </details>
+          <details class="data" open>
+            <summary>解密后的 HTTP 上传</summary>
+            <div style="padding-top:10px;">${renderTlsUploadTable(decryptedUploads.slice(0, 120), "当前没有解密出 HTTP 文件上传")}</div>
+          </details>
+        `;
+      };
+
+      pane.innerHTML = `
+        <div class="muted" style="margin-bottom:8px;">TLS 协议解析</div>
+        <details class="data" open>
+          <summary>握手会话概览</summary>
+          <div style="padding-top:10px;">
+            <div class="ws-meta-grid" style="margin-bottom:10px;">
+              <div class="ws-meta-card">
+                <div class="ws-meta-label">TLS 记录数</div>
+                <div class="ws-meta-body">${esc(String(detail.session_count || sessions.length || 0))}</div>
+              </div>
+              <div class="ws-meta-card">
+                <div class="ws-meta-label">SNI 数</div>
+                <div class="ws-meta-body">${esc(String(topSni.length || 0))}</div>
+              </div>
+            </div>
+            ${renderSniTable(topSni, "当前没有可统计的 SNI")}
+            <div class="scroll-box" style="margin-top:10px;">
+              <table>
+                <thead><tr><th>packet</th><th>src</th><th>dst</th><th>SNI</th><th>version</th><th>cipher</th></tr></thead>
+                <tbody>
+                  ${sessions.length ? sessions.map((item) => `
+                    <tr>
+                      <td>${esc(item.packet_index)}</td>
+                      <td>${esc(item.src_ip || "")}</td>
+                      <td>${esc(item.dst_ip || "")}</td>
+                      <td>${esc(item.sni || "")}</td>
+                      <td>${esc(item.version || "")}</td>
+                      <td>${esc(item.cipher_suite || "")}</td>
+                    </tr>
+                  `).join("") : `<tr><td colspan="6" class="muted">当前没有 TLS 会话明细</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+        <details class="data" open>
+          <summary>TLS 解密工具</summary>
+          <div class="ws-godzilla-box">
+            <div class="ws-filter-row">
+              <label for="tls-key-text">TLS keylog / 本地文件路径</label>
+              <textarea
+                id="tls-key-text"
+                rows="6"
+                placeholder="可直接粘贴 NSS/SSLKEYLOGFILE keylog，也可以输入 E:\\keys\\sslkey.log 这类本地文件路径"
+              >${esc(state.tlsKeyText || "")}</textarea>
+            </div>
+            <div class="ws-filter-row">
+              <label for="tls-key-file-pane">TLS keylog 文件</label>
+              <input id="tls-key-file-pane" type="file" accept=".log,.txt,.keys">
+            </div>
+            <div class="ws-inline-actions">
+              <button type="button" class="ws-primary-btn" data-role="tls-decrypt-submit"${state.tlsLoading ? " disabled" : ""}>
+                ${state.tlsLoading ? "解密中..." : "尝试解密"}
+              </button>
+              <div class="ws-godzilla-meta">工具会基于当前项目原始 pcap 重新跑一遍 TLS + HTTP 解析，并返回解密后的结果预览。</div>
+            </div>
+            <div class="ws-godzilla-meta" data-role="tls-key-file-meta">${esc(tlsFileMetaText())}</div>
+            <div data-role="tls-decrypt-result">${renderTlsDecryptResult()}</div>
+          </div>
+        </details>
+      `;
+
+      const keyTextInput = pane.querySelector("#tls-key-text");
+      const keyFileInput = pane.querySelector("#tls-key-file-pane");
+      const submitBtn = pane.querySelector('[data-role="tls-decrypt-submit"]');
+      const fileMeta = pane.querySelector('[data-role="tls-key-file-meta"]');
+      const stopTlsDecryptPolling = () => {
+        if (state.tlsPollTimer) {
+          clearTimeout(state.tlsPollTimer);
+          state.tlsPollTimer = null;
+        }
+      };
+      const scheduleTlsDecryptPoll = (delay = 800) => {
+        stopTlsDecryptPolling();
+        if (!currentJobId || !state.tlsLoading || !state.tlsTaskId) {
+          return;
+        }
+        const pollJobId = currentJobId;
+        const pollTaskId = state.tlsTaskId;
+        state.tlsPollTimer = setTimeout(async () => {
+          try {
+            const resp = await fetch(`/api/jobs/${pollJobId}/tls/decrypt/status`);
+            const payload = await resp.json();
+            if (!resp.ok || !payload.ok) {
+              throw new Error(payload?.detail || "TLS 解密状态查询失败");
+            }
+            if (currentJobId !== pollJobId) {
+              return;
+            }
+            const task = payload.task || null;
+            if (!task) {
+              scheduleTlsDecryptPoll(1200);
+              return;
+            }
+            if (pollTaskId && task.task_id && pollTaskId !== String(task.task_id)) {
+              scheduleTlsDecryptPoll(1200);
+              return;
+            }
+
+            state.tlsTaskId = String(task.task_id || state.tlsTaskId || "");
+            state.tlsProgress = task;
+            if (task.status === "completed") {
+              state.tlsLoading = false;
+              state.tlsResult = task.result || null;
+              state.tlsError = "";
+              log(`TLS 解密完成: http=${state.tlsResult?.summary?.http_request_count || 0}, uploads=${state.tlsResult?.summary?.http_upload_count || 0}`);
+            } else if (task.status === "error") {
+              state.tlsLoading = false;
+              state.tlsResult = null;
+              state.tlsError = task.error || task.message || "TLS 解密失败";
+              log(`TLS 解密失败: ${state.tlsError}`, "ERROR");
+            } else {
+              state.tlsLoading = true;
+            }
+          } catch (err) {
+            if (currentJobId !== pollJobId) {
+              return;
+            }
+            state.tlsLoading = false;
+            state.tlsError = err?.message || String(err);
+            log(`TLS 解密状态查询失败: ${state.tlsError}`, "ERROR");
+          } finally {
+            renderTLSPane(pane, module, result);
+          }
+        }, delay);
+      };
+
+      if (keyTextInput) {
+        keyTextInput.addEventListener("input", () => {
+          state.tlsKeyText = String(keyTextInput.value || "");
+          state.tlsError = "";
+        });
+      }
+
+      if (keyFileInput) {
+        keyFileInput.addEventListener("change", () => {
+          const file = keyFileInput.files && keyFileInput.files[0] ? keyFileInput.files[0] : null;
+          state.tlsKeyFile = file;
+          state.tlsKeyFileName = file ? String(file.name || "") : "";
+          state.tlsError = "";
+          if (fileMeta) {
+            fileMeta.textContent = tlsFileMetaText();
+          }
+        });
+      }
+
+      if (submitBtn) {
+        submitBtn.addEventListener("click", async () => {
+          if (state.tlsLoading) {
+            return;
+          }
+          if (!currentJobId) {
+            state.tlsError = "当前没有可用任务，无法执行 TLS 解密";
+            state.tlsResult = null;
+            renderTLSPane(pane, module, result);
+            return;
+          }
+
+          const keyText = String(state.tlsKeyText || "").trim();
+          if (!keyText && !state.tlsKeyFile) {
+            state.tlsError = "请输入 TLS keylog、本地文件路径，或选择一个 keylog 文件";
+            state.tlsResult = null;
+            renderTLSPane(pane, module, result);
+            return;
+          }
+
+          stopTlsDecryptPolling();
+          state.tlsLoading = true;
+          state.tlsTaskId = "";
+          state.tlsError = "";
+          state.tlsResult = null;
+          state.tlsProgress = {
+            status: "running",
+            stage: "initializing",
+            message: "正在提交 TLS 解密任务",
+            elapsed_ms: 0,
+            progress: { processed: 0, total: null, percent: null, updated_at: null },
+          };
+          renderTLSPane(pane, module, result);
+
+          try {
+            const formData = new FormData();
+            if (keyText) {
+              formData.append("key_text", keyText);
+            }
+            if (state.tlsKeyFile) {
+              formData.append(
+                "key_file",
+                state.tlsKeyFile,
+                state.tlsKeyFile.name || "sslkey.log"
+              );
+            }
+            const resp = await fetch(`/api/jobs/${currentJobId}/tls/decrypt`, {
+              method: "POST",
+              body: formData,
+            });
+            const payload = await resp.json();
+            if (!resp.ok || !payload.ok) {
+              throw new Error(payload?.detail || "TLS 解密失败");
+            }
+            const task = payload.task || null;
+            if (!task) {
+              throw new Error("TLS 解密任务启动失败");
+            }
+            state.tlsTaskId = String(task.task_id || "");
+            state.tlsProgress = task;
+            state.tlsResult = task.result || null;
+            state.tlsError = task.status === "error" ? (task.error || task.message || "TLS 解密失败") : "";
+            state.tlsLoading = task.status === "running";
+            if (task.status === "completed" && task.result) {
+              log(`TLS 解密完成: http=${task.result?.summary?.http_request_count || 0}, uploads=${task.result?.summary?.http_upload_count || 0}`);
+            } else if (task.status === "running") {
+              log("TLS 解密任务已启动，正在重新读取 pcap 并解密 TLS 流量");
+            }
+          } catch (err) {
+            state.tlsLoading = false;
+            state.tlsResult = null;
+            state.tlsError = err?.message || String(err);
+            log(`TLS 解密失败: ${state.tlsError}`, "ERROR");
+          } finally {
+            renderTLSPane(pane, module, result);
+          }
+        });
+      }
+
+      if (state.tlsLoading && state.tlsTaskId) {
+        scheduleTlsDecryptPoll();
+      } else {
+        stopTlsDecryptPolling();
+      }
     }
 
     function renderDNSPane(pane, module, result) {
@@ -3377,6 +5728,10 @@ joined_preview=${esc(item.joined_preview || "")}</div>
         renderWebShellPane(pane, result);
         return;
       }
+      if (module.name === "SQLInjectionDetector") {
+        renderSQLInjectionPane(pane, result);
+        return;
+      }
       const topKeys = Object.keys(detail).filter((k) => k.startsWith("top_"));
       const recordKey = ["records"].find((k) => Array.isArray(detail[k]));
       const alerts = result.alerts || [];
@@ -3433,6 +5788,331 @@ joined_preview=${esc(item.joined_preview || "")}</div>
         </table>
       `;
       pane.innerHTML = html;
+    }
+
+    function renderSQLInjectionPane(pane, result) {
+      const detail = result.detail || {};
+      const rows = Array.isArray(detail.records) ? detail.records : [];
+      const detected = Array.isArray(detail.detected_sqli_types) ? detail.detected_sqli_types : [];
+      const supported = Array.isArray(detail.supported_sqli_types) ? detail.supported_sqli_types : ["Bool 盲注"];
+      const injectionPoints = Array.isArray(detail.injection_points) ? detail.injection_points : [];
+      const state = getPaneUiState("attack:SQLInjectionDetector", {
+        selectedType: "",
+        boolMarkerText: "",
+        boolLoading: false,
+        boolError: "",
+        boolResult: null,
+      });
+      const defaultOptions = [
+        { value: "bool_blind", label: "Bool 盲注" },
+      ];
+      const typeOptions = Array.isArray(detail.supported_type_options) && detail.supported_type_options.length
+        ? detail.supported_type_options
+        : defaultOptions;
+      const parserOptions = [
+        { value: "__all__", label: "全部已命中类型" },
+        ...typeOptions,
+      ];
+      const preferredSelected = detected.length === 1
+        ? (rows.find((item) => String(item.sqli_type || "") === "bool_blind") || {}).sqli_type || "__all__"
+        : "__all__";
+      const initialSelected = parserOptions.some((item) => item.value === state.selectedType)
+        ? state.selectedType
+        : preferredSelected;
+      const optionLabelMap = Object.fromEntries(parserOptions.map((item) => [String(item.value), String(item.label)]));
+      state.selectedType = initialSelected;
+
+      const uniqueTexts = (values) => {
+        const seen = new Set();
+        const items = [];
+        for (const value of values || []) {
+          const text = String(value || "").trim();
+          if (!text || seen.has(text)) {
+            continue;
+          }
+          seen.add(text);
+          items.push(text);
+        }
+        return items;
+      };
+
+      const renderSqliKvItem = (key, value) => `
+        <div class="item">
+          <div class="k">${esc(key)}</div>
+          <div class="v">${esc(value || "-")}</div>
+        </div>
+      `;
+
+      const section = (title, items, emptyText = "无数据") => {
+        const body = (Array.isArray(items) && items.length)
+          ? items.map((item) => `<pre class="ws-pre-block">${esc(item)}</pre>`).join("")
+          : `<div class="muted">${esc(emptyText)}</div>`;
+        return `
+          <details class="data" open>
+            <summary>${esc(title)}</summary>
+            <div style="padding-top:10px;">${body}</div>
+          </details>
+        `;
+      };
+
+      const recordSection = (title, items, emptyText = "无数据") => {
+        const body = (Array.isArray(items) && items.length)
+          ? items.map((row) => {
+              const parts = [];
+              if (row.injection_point) parts.push(String(row.injection_point));
+              if (row.request_packet_index != null) parts.push(`request=${row.request_packet_index}`);
+              if (row.response_packet_index != null) parts.push(`response=${row.response_packet_index}`);
+              if (row.bool_position != null) parts.push(`pos=${row.bool_position}`);
+              if (row.bool_candidate) parts.push(`char=${row.bool_candidate}`);
+              if (row.response_length != null) parts.push(`resp_len=${row.response_length}`);
+              const transcript = [
+                String(row.bool_expression || "").trim(),
+                String(row.response_preview || "").trim(),
+              ].filter(Boolean).join("\n");
+              return `
+                <div class="ws-command">
+                  <div class="ws-command-meta">${esc(parts.join(" | ") || "record")}</div>
+                  <pre>${esc(transcript || "(空)")}</pre>
+                </div>
+              `;
+            }).join("")
+          : `<div class="muted">${esc(emptyText)}</div>`;
+        return `
+          <details class="data" open>
+            <summary>${esc(title)}</summary>
+            <div style="padding-top:10px;">${body}</div>
+          </details>
+        `;
+      };
+
+      const boolStopReasonLabel = (value) => ({
+        completed: "已完成",
+        no_true_candidate: "后续位置没有继续命中 true",
+        ambiguous_true_candidate: "后续位置出现多个 true 候选",
+      }[String(value || "")] || "-");
+
+      const renderBoolResult = () => {
+        if (state.boolLoading) {
+          return `<div class="ws-godzilla-meta">正在尝试还原 Bool 盲注结果...</div>`;
+        }
+        if (state.boolError) {
+          return `<div class="ws-godzilla-meta" style="color:#fca5a5;">${esc(state.boolError)}</div>`;
+        }
+        const payload = state.boolResult;
+        if (!payload) {
+          return `<div class="ws-godzilla-meta">支持留空自动按响应长度聚类；也支持输入“真响应”中会出现的关键字，例如好耶。</div>`;
+        }
+
+        const contexts = Array.isArray(payload.contexts) ? payload.contexts : [];
+        const contextHtml = contexts.length
+          ? contexts.map((context) => {
+              const positions = Array.isArray(context.positions) ? context.positions : [];
+              const positionRows = positions.length
+                ? `
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>pos</th>
+                          <th>char</th>
+                          <th>true_count</th>
+                          <th>candidates</th>
+                          <th>resp_len</th>
+                          <th>request</th>
+                          <th>response</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${positions.map((item) => `
+                          <tr>
+                            <td>${esc(String(item.position ?? "-"))}</td>
+                            <td>${esc(item.resolved_char || "-")}</td>
+                            <td>${esc(String(item.true_candidate_count ?? 0))}</td>
+                            <td>${esc((Array.isArray(item.candidate_chars) ? item.candidate_chars.join(", ") : "") || "-")}</td>
+                            <td>${esc(String(item.true_response_length ?? item.max_response_length ?? "-"))}</td>
+                            <td>${esc(String(item.true_request_packet_index ?? "-"))}</td>
+                            <td>${esc(String(item.true_response_packet_index ?? "-"))}</td>
+                          </tr>
+                        `).join("")}
+                      </tbody>
+                    </table>
+                  `
+                : `<div class="muted">当前上下文没有可展示的位置明细。</div>`;
+
+              return `
+                <div class="ws-godzilla-result">
+                  <div class="ws-godzilla-kv">
+                    ${renderSqliKvItem("注入点", context.injection_point || "-")}
+                    ${renderSqliKvItem("URI", context.uri_path || context.uri || "-")}
+                    ${renderSqliKvItem("参数", `${context.param_location || "query"}.${context.param_name || "-"}`)}
+                    ${renderSqliKvItem("目标表达式", context.target_expression || "-")}
+                    ${renderSqliKvItem("还原结果", context.restored_text || "-")}
+                    ${renderSqliKvItem("还原长度", String(context.resolved_position_count || 0))}
+                    ${renderSqliKvItem("停止原因", boolStopReasonLabel(context.stop_reason))}
+                    ${renderSqliKvItem("真值长度", Array.isArray(context.true_length_values) && context.true_length_values.length ? context.true_length_values.join(", ") : "-")}
+                  </div>
+                  ${positionRows}
+                </div>
+              `;
+            }).join("")
+          : `<div class="ws-godzilla-meta">当前没有可展示的 Bool 盲注上下文。</div>`;
+
+        return `
+          <div class="ws-godzilla-result">
+            <div class="ws-godzilla-kv">
+              ${renderSqliKvItem("还原状态", payload.matched ? "已还原" : "未还原")}
+              ${renderSqliKvItem("判定方式", payload.analysis_label || "-")}
+              ${renderSqliKvItem("真值关键字", payload.true_marker || "-")}
+              ${renderSqliKvItem("上下文数量", String(payload.context_count || contexts.length || 0))}
+              ${renderSqliKvItem("最佳结果", payload.best_text || "-")}
+            </div>
+          </div>
+          ${contextHtml}
+        `;
+      };
+
+      const renderBoolTools = () => `
+        <details class="data" open>
+          <summary>Bool 盲注还原</summary>
+          <div class="ws-godzilla-box">
+            <div class="ws-filter-row">
+              <label for="ws-sqli-bool-marker-text">True 响应关键字</label>
+              <input
+                id="ws-sqli-bool-marker-text"
+                type="text"
+                value="${esc(state.boolMarkerText || "")}"
+                placeholder="可选，输入真响应中会出现的字符串，例如 好耶"
+              >
+            </div>
+            <div class="ws-inline-actions">
+              <button type="button" class="ws-primary-btn" data-role="ws-sqli-bool-submit"${state.boolLoading ? " disabled" : ""}>
+                ${state.boolLoading ? "还原中..." : "尝试还原"}
+              </button>
+              <div class="ws-godzilla-meta">留空时优先按响应长度聚类自动判断 true/false；填写后会按响应正文是否包含该关键字判断。</div>
+            </div>
+            <div data-role="ws-sqli-bool-result">${renderBoolResult()}</div>
+          </div>
+        </details>
+      `;
+
+      pane.innerHTML = `
+        <div class="muted" style="margin-bottom:8px;">SQL 注入检测</div>
+        <details class="data" open>
+          <summary>可能是什么 SQL 注入</summary>
+          <div style="padding-top:10px;">
+            <div class="ws-meta-grid">
+              <div class="ws-meta-card">
+                <div class="ws-meta-label">当前命中</div>
+                <div class="ws-meta-body">${detected.length ? esc(detected.join("\n")) : "未命中已知类型"}</div>
+              </div>
+              <div class="ws-meta-card">
+                <div class="ws-meta-label">当前支持</div>
+                <div class="ws-meta-body">${supported.length ? esc(supported.join("\n")) : "暂无已注册类型"}</div>
+              </div>
+              <div class="ws-meta-card">
+                <div class="ws-meta-label">注入点</div>
+                <div class="ws-meta-body">${injectionPoints.length ? esc(injectionPoints.join("\n")) : "暂无已定位注入点"}</div>
+              </div>
+            </div>
+            <div class="ws-filter-row">
+              <label for="ws-sqli-type-select">选择进行解析</label>
+              <select id="ws-sqli-type-select">
+                ${parserOptions.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+        </details>
+        <div data-role="ws-sqli-pane-content"></div>
+      `;
+
+      const select = pane.querySelector("#ws-sqli-type-select");
+      const content = pane.querySelector('[data-role="ws-sqli-pane-content"]');
+
+      const renderSelectedType = (selectedValue) => {
+        state.selectedType = selectedValue;
+        const filteredRows = selectedValue === "__all__"
+          ? rows
+          : rows.filter((item) => String(item.sqli_type || "") === selectedValue);
+        const expressionTexts = uniqueTexts(filteredRows.map((item) => item.target_expression));
+        const familyLabel = optionLabelMap[selectedValue] || "该类型";
+        const hasBoolRows = filteredRows.some((item) => String(item.sqli_type || "") === "bool_blind");
+        const emptyText = selectedValue === "__all__"
+          ? "无数据"
+          : `当前结果里没有 ${familyLabel} 命中`;
+
+        content.innerHTML = `
+          ${hasBoolRows ? renderBoolTools() : ""}
+          ${recordSection("检测记录", filteredRows, emptyText)}
+          ${section("目标表达式", expressionTexts, emptyText)}
+        `;
+
+        if (!hasBoolRows) {
+          return;
+        }
+
+        const markerInput = content.querySelector("#ws-sqli-bool-marker-text");
+        const submitBtn = content.querySelector('[data-role="ws-sqli-bool-submit"]');
+
+        if (markerInput) {
+          markerInput.addEventListener("input", () => {
+            state.boolMarkerText = String(markerInput.value || "");
+            state.boolError = "";
+          });
+        }
+
+        if (submitBtn) {
+          submitBtn.addEventListener("click", async () => {
+            if (state.boolLoading) {
+              return;
+            }
+            if (!currentJobId) {
+              state.boolError = "当前没有可用任务，无法执行 Bool 盲注还原";
+              state.boolResult = null;
+              renderSelectedType(state.selectedType || "__all__");
+              return;
+            }
+
+            const markerText = String(state.boolMarkerText || "").trim();
+            state.boolLoading = true;
+            state.boolError = "";
+            renderSelectedType(state.selectedType || "__all__");
+
+            try {
+              const formData = new FormData();
+              if (markerText) {
+                formData.append("true_marker", markerText);
+              }
+              const resp = await fetch(`/api/jobs/${currentJobId}/sqli/bool/parse`, {
+                method: "POST",
+                body: formData,
+              });
+              const payload = await resp.json();
+              if (!resp.ok || !payload.ok) {
+                throw new Error(payload?.detail || "Bool 盲注还原失败");
+              }
+              state.boolResult = payload.result || null;
+              state.boolError = "";
+              log(`Bool 盲注还原完成: contexts=${state.boolResult?.context_count || 0}`);
+            } catch (err) {
+              state.boolResult = null;
+              state.boolError = err?.message || String(err);
+              log(`Bool 盲注还原失败: ${state.boolError}`, "ERROR");
+            } finally {
+              state.boolLoading = false;
+              renderSelectedType(state.selectedType || "__all__");
+            }
+          });
+        }
+      };
+
+      if (select) {
+        select.value = initialSelected;
+        select.addEventListener("change", () => {
+          state.selectedType = select.value;
+          renderSelectedType(select.value);
+        });
+      }
+
+      renderSelectedType(initialSelected);
     }
 
     function renderWebShellPane(pane, result) {
@@ -3596,6 +6276,7 @@ joined_preview=${esc(item.joined_preview || "")}</div>
         path_file: "输入路径文件",
         inline_lines: "输入多行候选",
         single_key: "单个密钥",
+        traffic_detected: "流量中检测到",
         empty: "空输入",
       }[String(mode || "")] || "未知来源");
 
@@ -3614,12 +6295,16 @@ joined_preview=${esc(item.joined_preview || "")}</div>
         }
         const payload = state.godzillaResult;
         if (!payload) {
-          return `<div class="ws-godzilla-meta">支持输入单个密钥，也支持输入本地文件路径或上传字典文件按行尝试。</div>`;
+          return `<div class="ws-godzilla-meta">支持输入单个密钥、本地文件路径、上传字典文件；如果流量里已检测到 session key，也可以直接空提交。</div>`;
         }
 
         const sourceMeta = payload.candidate_source || {};
         const matchedContext = payload.matched_context || {};
         const contexts = Array.isArray(payload.contexts) ? payload.contexts : [];
+        const detectedKeys = Array.isArray(payload.detected_keys) ? payload.detected_keys : [];
+        const detectedKeyText = detectedKeys.length
+          ? detectedKeys.join("\n")
+          : (payload.detected_key || "");
         const statusText = !payload.matched
           ? "未找到可用密钥"
           : payload.exact_match
@@ -3669,6 +6354,7 @@ joined_preview=${esc(item.joined_preview || "")}</div>
                   <div class="ws-godzilla-kv">
                     ${renderGodzillaKvItem("URI", context.uri || "-")}
                     ${renderGodzillaKvItem("参数名", context.pass_param || "pass")}
+                    ${renderGodzillaKvItem("检测到密钥", context.session_key || "-")}
                     ${renderGodzillaKvItem("左 marker", context.marker_left || "-")}
                     ${renderGodzillaKvItem("右 marker", context.marker_right || "-")}
                     ${renderGodzillaKvItem("条目数", String(context.entry_count ?? entries.length ?? 0))}
@@ -3684,6 +6370,8 @@ joined_preview=${esc(item.joined_preview || "")}</div>
             <div class="ws-godzilla-kv">
               ${renderGodzillaKvItem("解析状态", statusText)}
               ${renderGodzillaKvItem("使用密钥", payload.used_key || "-")}
+              ${renderGodzillaKvItem("检测到密钥", detectedKeyText || "-")}
+              ${renderGodzillaKvItem("检测到数量", String(payload.detected_key_count || detectedKeys.length || 0))}
               ${renderGodzillaKvItem("命中来源", payload.matched_input || "-")}
               ${renderGodzillaKvItem("派生方式", payload.matched_derivation || "-")}
               ${renderGodzillaKvItem("候选来源", sourceText || "-")}
@@ -3718,7 +6406,7 @@ joined_preview=${esc(item.joined_preview || "")}</div>
               <button type="button" class="ws-primary-btn" data-role="ws-godzilla-submit"${state.godzillaLoading ? " disabled" : ""}>
                 ${state.godzillaLoading ? "解析中..." : "尝试解析"}
               </button>
-              <div class="ws-godzilla-meta">如果输入内容是本地文件路径，就按行读取尝试；否则直接按单个密钥解析。</div>
+              <div class="ws-godzilla-meta">如果输入内容是本地文件路径，就按行读取尝试；否则按单个密钥解析。留空时会优先尝试流量中已检测到的 key。</div>
             </div>
             <div class="ws-godzilla-meta" data-role="ws-godzilla-file-meta">${esc(godzillaFileMetaText())}</div>
             <div data-role="ws-godzilla-result">${renderGodzillaResult()}</div>
@@ -3815,13 +6503,6 @@ joined_preview=${esc(item.joined_preview || "")}</div>
             }
 
             const keyText = String(state.godzillaKeyText || "").trim();
-            if (!keyText && !state.godzillaKeyFile) {
-              state.godzillaError = "请输入密钥、本地文件路径，或选择一个密钥文件";
-              state.godzillaResult = null;
-              renderSelectedFamily(state.selectedFamily || "__all__");
-              return;
-            }
-
             state.godzillaLoading = true;
             state.godzillaError = "";
             renderSelectedFamily(state.selectedFamily || "__all__");
@@ -3894,6 +6575,19 @@ joined_preview=${esc(item.joined_preview || "")}</div>
       await startBaseJob();
     });
 
+    confirmCancelBtn.addEventListener("click", () => resolveConfirmDialog(false));
+    confirmOkBtn.addEventListener("click", () => resolveConfirmDialog(true));
+    confirmOverlay.addEventListener("click", (event) => {
+      if (event.target === confirmOverlay) {
+        resolveConfirmDialog(false);
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && pendingConfirm) {
+        resolveConfirmDialog(false);
+      }
+    });
+
     restartBtn.addEventListener("click", async () => {
       if (!fileInput.files || !fileInput.files[0]) {
         log("请先选择文件", "WARN");
@@ -3912,9 +6606,6 @@ joined_preview=${esc(item.joined_preview || "")}</div>
       log("解析栏目已清空");
     });
 
-    clearLogBtn.addEventListener("click", () => {
-      consoleBox.textContent = "[INFO] 日志已清空";
-    });
     projectRefreshBtn.addEventListener("click", async () => {
       await loadProjectCatalog();
       log("项目列表已刷新");
@@ -3927,6 +6618,22 @@ joined_preview=${esc(item.joined_preview || "")}</div>
     });
     projectPruneBtn.addEventListener("click", async () => {
       await pruneProjects();
+    });
+
+    document.getElementById("catalog-collapse-btn").addEventListener("click", () => {
+      const panel = document.querySelector(".board-panel-catalog");
+      panel.classList.toggle("collapsed");
+      const btn = document.getElementById("catalog-collapse-btn");
+      btn.textContent = panel.classList.contains("collapsed") ? "▶" : "收起 ◀";
+      applyBoardLayout();
+    });
+
+    document.getElementById("workspace-collapse-btn").addEventListener("click", () => {
+      const panel = document.querySelector(".board-panel-workspace");
+      panel.classList.toggle("collapsed");
+      const btn = document.getElementById("workspace-collapse-btn");
+      btn.textContent = panel.classList.contains("collapsed") ? "▶" : "收起 ◀";
+      applyBoardLayout();
     });
 
     document.getElementById("run-form").addEventListener("submit", (e) => e.preventDefault());

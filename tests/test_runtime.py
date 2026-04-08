@@ -1,9 +1,12 @@
+from dataclasses import asdict
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -12,10 +15,13 @@ from TrafficAnalyzer.core.loader import PcapLoader, _parse_capinfos_packet_count
 from TrafficAnalyzer.core.models import PacketRecord
 from TrafficAnalyzer.main import build_parser
 from TrafficAnalyzer.parsers.packet_parser import PacketParser
+from TrafficAnalyzer.pipeline.service import build_default_pipeline_service
 from TrafficAnalyzer.protocols import build_protocol_parsers
+from TrafficAnalyzer.protocols.http_parser import HTTPProtocolParser
 from TrafficAnalyzer.runtime import format_runtime_report, runtime_report_dict, validate_runtime
 from TrafficAnalyzer.utils.artifact_utils import artifact_raw_url, artifact_viewer_url, normalize_artifact_relative_path
-from TrafficAnalyzer.web.job_manager import AnalysisJob, JobManager, ModuleExecution, _init_packet_db, _parse_packet_chunk
+from TrafficAnalyzer.utils.tls_keylog import normalize_tls_keylog_text
+from TrafficAnalyzer.web.job_manager import AnalysisJob, JobManager, ModuleExecution, _init_packet_db, _module_worker, _parse_packet_chunk
 
 
 class TestRegistryAndRuntime(unittest.TestCase):
@@ -48,6 +54,87 @@ class TestRegistryAndRuntime(unittest.TestCase):
         finally:
             manager.jobs.clear()
             manager.shutdown()
+
+    def test_job_manager_parse_godzilla_key_uses_detected_session_key_when_input_empty(self):
+        if not os.path.exists("tests/buuctf/Godzilla.pcap"):
+            self.skipTest("缺少 tests/buuctf/Godzilla.pcap 样本")
+
+        parser = PacketParser(mode="fast")
+        packets = list(parser.parse_file("tests/buuctf/Godzilla.pcap"))
+
+        service = build_default_pipeline_service()
+        report = service.analyze_packets(
+            packets,
+            source="unit-test",
+            enabled_protocols=[],
+            enabled_attacks=["WebShellDetector"],
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            manager = JobManager(storage_root=tmpdir)
+            try:
+                project_dir = Path(tmpdir) / "project-1"
+                project_dir.mkdir(parents=True, exist_ok=True)
+                db_path = project_dir / "packets.sqlite3"
+                _init_packet_db(str(db_path))
+                conn = sqlite3.connect(str(db_path))
+                try:
+                    conn.executemany(
+                        "INSERT INTO packets (idx, packet_json) VALUES (?, ?)",
+                        [
+                            (
+                                packet.index,
+                                json.dumps(packet.__dict__, ensure_ascii=False, separators=(",", ":")),
+                            )
+                            for packet in packets
+                        ],
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                job = AnalysisJob(
+                    job_id="job-1",
+                    filename="Godzilla.pcap",
+                    temp_path="tests/buuctf/Godzilla.pcap",
+                    db_path=str(db_path),
+                    max_packets=None,
+                    project_dir=str(project_dir),
+                    metadata_path=str(project_dir / "meta.json"),
+                    status="parsed",
+                )
+                job.modules["attack:WebShellDetector"] = ModuleExecution(
+                    module_type="attack",
+                    module_name="WebShellDetector",
+                    status="completed",
+                    result={"alerts": [asdict(alert) for alert in report.alerts]},
+                )
+                manager.jobs[job.job_id] = job
+
+                result = manager.parse_webshell_godzilla_key(job.job_id)
+
+                self.assertTrue(result["matched"])
+                self.assertTrue(result["exact_match"])
+                self.assertEqual(result["candidate_source"]["mode"], "traffic_detected")
+                self.assertEqual(result["used_key"], "421eb7f1b8e4b3cf")
+                self.assertEqual(result["detected_key"], "421eb7f1b8e4b3cf")
+                self.assertIn("421eb7f1b8e4b3cf", result["detected_keys"])
+                self.assertEqual(result["matched_derivation"], "流量中检测到")
+                self.assertEqual(result["matched_context"]["pass_param"], "babyshell")
+                self.assertTrue(
+                    any(
+                        "Godzilla1sS000Int3rEstIng" in str(
+                            (entry.get("response") or {}).get("text")
+                            or (entry.get("response") or {}).get("preview")
+                            or ""
+                        )
+                        for context in result["contexts"]
+                        for entry in (context.get("entries") or [])
+                    )
+                )
+            finally:
+                manager.jobs.clear()
+                manager.shutdown()
 
     def test_parse_capinfos_packet_count(self):
         self.assertEqual(_parse_capinfos_packet_count("tests/file.pcapng\t7106"), 7106)
@@ -101,6 +188,298 @@ class TestRegistryAndRuntime(unittest.TestCase):
             rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
             self.assertEqual([row["index"] for row in rows], [0, 1, 2])
             self.assertEqual(rows[2]["src_ip"], "10.0.0.2")
+
+    @patch("TrafficAnalyzer.web.job_manager._stream_packets_from_db", return_value=iter([]))
+    @patch("TrafficAnalyzer.web.job_manager.build_default_pipeline_service")
+    @patch("TrafficAnalyzer.web.job_manager._run_mapreduce_worker")
+    @patch("TrafficAnalyzer.web.job_manager._write_json_atomic")
+    def test_module_worker_runs_usb_sequentially_not_mapreduce(
+        self,
+        mock_write_json,
+        mock_mapreduce,
+        mock_build_service,
+        _mock_stream_packets,
+    ):
+        mock_mapreduce.return_value = {"module": {"type": "protocol", "name": "USB"}}
+        mock_service = mock_build_service.return_value
+        mock_service.analyze_packets.return_value = SimpleNamespace(
+            packet_count=0,
+            stats={
+                "protocol_event_count": 0,
+                "alert_count": 0,
+                "detailed_views": {
+                    "USB": {
+                        "record_count": 0,
+                        "mouse": {
+                            "draw_segment_count": 7,
+                        },
+                    }
+                },
+                "debug": {},
+            },
+        )
+
+        _module_worker(
+            db_path="ignored.sqlite3",
+            module_type="protocol",
+            module_name="USB",
+            source="unit-test",
+            result_path="ignored-result.json",
+            fetch_size=100,
+        )
+
+        mock_mapreduce.assert_not_called()
+        mock_service.analyze_packets.assert_called_once()
+        mock_write_json.assert_called_once()
+        payload = mock_write_json.call_args.args[1]
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["result"]["module"]["name"], "USB")
+        self.assertEqual(payload["result"]["detail"]["mouse"]["draw_segment_count"], 7)
+
+    def test_normalize_tls_keylog_text_repairs_escaped_lines_and_discards_noise(self):
+        raw_text = (
+            "------boundary\\r\\n"
+            "Content-Disposition: form-data; name=\"file\"; filename=\"sslkey.log\"\\r\\n\\r\\n"
+            "CLIENT_HANDSHAKE_TRAFFIC_SECRET 00112233445566778899aabbccddeeff aabbccddeeff00112233445566778899\\n"
+            "SERVER_TRAFFIC_SECRET_0 11223344556677889900aabbccddeeff 99887766554433221100ffeeddccbbaa\\r\\n"
+            "------boundary--"
+        )
+
+        normalized = normalize_tls_keylog_text(raw_text)
+
+        self.assertEqual(
+            normalized.splitlines(),
+            [
+                "CLIENT_HANDSHAKE_TRAFFIC_SECRET 00112233445566778899aabbccddeeff aabbccddeeff00112233445566778899",
+                "SERVER_TRAFFIC_SECRET_0 11223344556677889900aabbccddeeff 99887766554433221100ffeeddccbbaa",
+            ],
+        )
+
+    def test_job_manager_parse_tls_keylog_returns_decrypted_flag_hits(self):
+        if not os.path.exists("tests/buuctf/tls.pcapng"):
+            self.skipTest("缺少 tests/buuctf/tls.pcapng 样本")
+
+        extractor = PacketParser(mode="fast")
+        upload_packets = list(
+            extractor.parse_file(
+                "tests/buuctf/tls.pcapng",
+                protocol_parsers=[HTTPProtocolParser()],
+            )
+        )
+        uploaded_keylog = next(
+            str((packet.raw.get("http") or {}).get("file_data") or "")
+            for packet in upload_packets
+            if "CLIENT_HANDSHAKE_TRAFFIC_SECRET" in str((packet.raw.get("http") or {}).get("file_data") or "")
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            manager = JobManager(storage_root=tmpdir)
+            try:
+                project_dir = Path(tmpdir) / "project-1"
+                project_dir.mkdir(parents=True, exist_ok=True)
+                db_path = project_dir / "packets.sqlite3"
+                _init_packet_db(str(db_path))
+                job = AnalysisJob(
+                    job_id="job-1",
+                    filename="tls.pcapng",
+                    temp_path="tests/buuctf/tls.pcapng",
+                    db_path=str(db_path),
+                    max_packets=None,
+                    project_dir=str(project_dir),
+                    metadata_path=str(project_dir / "meta.json"),
+                    status="parsed",
+                )
+                manager.jobs[job.job_id] = job
+
+                result = manager.parse_tls_keylog(job.job_id, key_text=uploaded_keylog)
+
+                self.assertGreater(result["summary"]["http_request_count"], 0)
+                self.assertGreater(result["summary"]["tls_session_count"], 0)
+                self.assertIn("flag{e3364403651e775bfb9b3ffa06b69994}", result["flag_hits"])
+            finally:
+                manager.jobs.clear()
+                manager.shutdown()
+
+    def test_job_manager_start_tls_decrypt_task_reports_progress_and_result(self):
+        with TemporaryDirectory() as tmpdir:
+            manager = JobManager(storage_root=tmpdir)
+            try:
+                project_dir = Path(tmpdir) / "project-1"
+                project_dir.mkdir(parents=True, exist_ok=True)
+                db_path = project_dir / "packets.sqlite3"
+                _init_packet_db(str(db_path))
+                job = AnalysisJob(
+                    job_id="job-1",
+                    filename="tls.pcapng",
+                    temp_path="tests/buuctf/tls.pcapng",
+                    db_path=str(db_path),
+                    max_packets=None,
+                    project_dir=str(project_dir),
+                    metadata_path=str(project_dir / "meta.json"),
+                    status="parsed",
+                    packet_count=205,
+                )
+                manager.jobs[job.job_id] = job
+
+                def fake_parse_tls_keylog_report(*, job, normalized_keylog, source_meta, progress_callback):
+                    self.assertEqual(job.job_id, "job-1")
+                    self.assertIn("CLIENT_RANDOM", normalized_keylog)
+                    if progress_callback is not None:
+                        progress_callback("packet_read", 51, 205, "正在使用 TLS keylog 重新读取 pcap")
+                    time.sleep(0.05)
+                    if progress_callback is not None:
+                        progress_callback("finalizing", 205, 205, "正在提取 TLS / HTTP 结果并整理命中信息")
+                    return {
+                        "keylog_source": source_meta,
+                        "summary": {
+                            "packet_count": 205,
+                            "protocol_event_count": 53,
+                            "tls_session_count": 43,
+                            "http_request_count": 10,
+                            "http_upload_count": 1,
+                            "flag_hit_count": 1,
+                        },
+                        "tls_detail": {},
+                        "http_detail": {},
+                        "flag_hits": ["flag{demo}"],
+                    }
+
+                with patch.object(manager, "_parse_tls_keylog_report", side_effect=fake_parse_tls_keylog_report):
+                    started = manager.start_tls_decrypt_task(
+                        job.job_id,
+                        key_text="CLIENT_RANDOM 00112233445566778899aabbccddeeff aabbccddeeff00112233445566778899",
+                    )
+                    self.assertEqual(started["task"]["status"], "running")
+                    self.assertIn(started["task"]["stage"], {"initializing", "packet_read", "finalizing"})
+
+                    task_payload = None
+                    deadline = time.time() + 2.0
+                    while time.time() < deadline:
+                        status = manager.tls_decrypt_status(job.job_id)
+                        task_payload = status["task"]
+                        if task_payload and task_payload["status"] != "running":
+                            break
+                        time.sleep(0.02)
+
+                    self.assertIsNotNone(task_payload)
+                    self.assertEqual(task_payload["status"], "completed")
+                    self.assertEqual(task_payload["stage"], "completed")
+                    self.assertEqual(task_payload["progress"]["processed"], 205)
+                    self.assertEqual(task_payload["progress"]["total"], 205)
+                    self.assertEqual(task_payload["result"]["summary"]["http_request_count"], 10)
+                    self.assertEqual(task_payload["result"]["flag_hits"], ["flag{demo}"])
+
+                    cached = manager.start_tls_decrypt_task(
+                        job.job_id,
+                        key_text="CLIENT_RANDOM 00112233445566778899aabbccddeeff aabbccddeeff00112233445566778899",
+                    )
+                    self.assertEqual(cached["task"]["status"], "completed")
+                    self.assertEqual(cached["task"]["result"]["summary"]["tls_session_count"], 43)
+            finally:
+                manager.jobs.clear()
+                manager.shutdown()
+
+    def test_job_manager_tls_decrypt_publishes_http_result_into_job_results(self):
+        with TemporaryDirectory() as tmpdir:
+            manager = JobManager(storage_root=tmpdir)
+            try:
+                project_dir = Path(tmpdir) / "project-1"
+                project_dir.mkdir(parents=True, exist_ok=True)
+                db_path = project_dir / "packets.sqlite3"
+                _init_packet_db(str(db_path))
+                job = AnalysisJob(
+                    job_id="job-1",
+                    filename="tls.pcapng",
+                    temp_path="tests/buuctf/tls.pcapng",
+                    db_path=str(db_path),
+                    max_packets=None,
+                    project_dir=str(project_dir),
+                    metadata_path=str(project_dir / "meta.json"),
+                    status="parsed",
+                    packet_count=205,
+                )
+                manager.jobs[job.job_id] = job
+
+                with patch.object(
+                    manager,
+                    "_parse_tls_keylog_report",
+                    return_value={
+                        "keylog_source": {"mode": "text", "label": "inline", "line_count": 1},
+                        "summary": {
+                            "packet_count": 205,
+                            "protocol_event_count": 53,
+                            "tls_session_count": 7,
+                            "http_request_count": 3,
+                            "http_upload_count": 1,
+                            "flag_hit_count": 1,
+                        },
+                        "tls_detail": {},
+                        "http_detail": {
+                            "request_count": 3,
+                            "upload_count": 1,
+                            "requests": [
+                                {"packet_index": 8, "direction": "request", "method": "POST", "host": "demo.local", "uri": "/upload"},
+                                {"packet_index": 9, "direction": "response", "status_code": "200", "uri": "/upload"},
+                            ],
+                            "uploads": [
+                                {"packet_index": 8, "filename": "flag.txt", "url": "/artifacts/http_uploads/flag.txt"},
+                            ],
+                            "upload_points": [
+                                {
+                                    "server_ip": "10.0.0.2",
+                                    "host": "demo.local",
+                                    "method": "POST",
+                                    "uri": "/upload",
+                                    "uri_path": "/upload",
+                                    "request_count": 1,
+                                    "upload_count": 1,
+                                    "files": [
+                                        {"filename": "flag.txt", "url": "/artifacts/http_uploads/flag.txt"},
+                                    ],
+                                }
+                            ],
+                        },
+                        "flag_hits": ["flag{demo}"],
+                    },
+                ):
+                    started_revision = job.revision
+                    started = manager.start_tls_decrypt_task(
+                        job.job_id,
+                        key_text="CLIENT_RANDOM 00112233445566778899aabbccddeeff aabbccddeeff00112233445566778899",
+                    )
+                    self.assertIn(started["task"]["status"], {"running", "completed"})
+
+                    deadline = time.time() + 2.0
+                    while time.time() < deadline:
+                        task = manager.tls_decrypt_status(job.job_id)["task"]
+                        result_file = project_dir / "module_results" / "protocol__HTTP.json"
+                        if task and task["status"] == "completed" and result_file.exists():
+                            break
+                        time.sleep(0.02)
+                    else:
+                        self.fail("TLS decrypt task did not finish in time")
+
+                self.assertGreater(job.revision, started_revision)
+                http_module = job.modules.get("protocol:HTTP")
+                self.assertIsNotNone(http_module)
+                self.assertEqual(http_module.status, "completed")
+                self.assertEqual(http_module.result["meta"]["source"], "tls_decrypt")
+                self.assertEqual(http_module.result["detail"]["request_count"], 3)
+                self.assertEqual(http_module.result["detail"]["upload_count"], 1)
+                self.assertEqual(http_module.result["summary"]["protocol_event_count"], 3)
+
+                results = manager.job_results(job.job_id)
+                result_map = {
+                    f'{item["module_type"]}:{item["module_name"]}': item
+                    for item in results["modules"]
+                }
+                self.assertIn("protocol:HTTP", result_map)
+                self.assertEqual(result_map["protocol:HTTP"]["result"]["detail"]["request_count"], 3)
+                self.assertEqual(result_map["protocol:HTTP"]["result"]["meta"]["source"], "tls_decrypt")
+                self.assertTrue((project_dir / "module_results" / "protocol__HTTP.json").exists())
+            finally:
+                manager.jobs.clear()
+                manager.shutdown()
 
     @patch("TrafficAnalyzer.parsers.packet_parser.shutil.which", return_value="/usr/bin/tshark")
     @patch("TrafficAnalyzer.parsers.packet_parser.PacketParser._parse_file_pyshark")
@@ -168,10 +547,11 @@ class TestRegistryAndRuntime(unittest.TestCase):
             )
         ]
 
-        def fake_pyshark(pcap_path, start_index=0, stop_index=None):
+        def fake_pyshark(pcap_path, start_index=0, stop_index=None, tls_keylog_path=None):
             self.assertEqual(pcap_path, "sample.pcap")
             self.assertEqual(start_index, 2)
             self.assertIsNone(stop_index)
+            self.assertIsNone(tls_keylog_path)
             return iter(fallback_packets)
 
         mock_pyshark.side_effect = fake_pyshark
@@ -250,6 +630,76 @@ class TestRegistryAndRuntime(unittest.TestCase):
     @patch("TrafficAnalyzer.parsers.packet_parser.shutil.which", return_value="/usr/bin/tshark")
     @patch("TrafficAnalyzer.parsers.packet_parser.PacketParser._parse_file_pyshark")
     @patch("TrafficAnalyzer.parsers.packet_parser.subprocess.Popen")
+    @patch("TrafficAnalyzer.parsers.packet_parser.tempfile.NamedTemporaryFile")
+    @patch("TrafficAnalyzer.parsers.packet_parser.os.remove")
+    def test_fast_parser_passes_tls_keylog_to_tshark(
+        self,
+        mock_remove,
+        mock_named_tempfile,
+        mock_popen,
+        mock_pyshark,
+        _mock_which,
+    ):
+        class FakeProcess:
+            def __init__(self, stdout_text: str, stderr_text: str, retcode: int):
+                self.stdout = io.StringIO(stdout_text)
+                self.stderr = io.StringIO(stderr_text)
+                self._retcode = retcode
+
+            def wait(self, timeout=None):
+                return self._retcode
+
+        class FakeTempFile:
+            def __init__(self):
+                self.name = "/tmp/mock-tls.keys"
+
+            def write(self, _value):
+                return None
+
+            def close(self):
+                return None
+
+        row = "\t".join(
+            [
+                "1",
+                "1.0",
+                "60",
+                "eth:ip:tcp:tls",
+                "10.0.0.1",
+                "10.0.0.2",
+                "6",
+                "",
+                "",
+                "",
+                "44321",
+                "443",
+                "0x00000018",
+                "",
+                "",
+            ]
+        )
+        mock_popen.return_value = FakeProcess(row, "", 0)
+        mock_named_tempfile.return_value = FakeTempFile()
+
+        parser = PacketParser(mode="fast")
+        packets = list(
+            parser.parse_file(
+                "sample.pcap",
+                protocol_parsers=[],
+                tls_keylog_text="CLIENT_RANDOM 00112233445566778899aabbccddeeff aabbccddeeff00112233445566778899",
+            )
+        )
+
+        self.assertEqual(len(packets), 1)
+        cmd = mock_popen.call_args.args[0]
+        self.assertIn("-o", cmd)
+        self.assertTrue(any(str(item).startswith("tls.keylog_file:") for item in cmd))
+        mock_pyshark.assert_not_called()
+        mock_remove.assert_called_once_with("/tmp/mock-tls.keys")
+
+    @patch("TrafficAnalyzer.parsers.packet_parser.shutil.which", return_value="/usr/bin/tshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.PacketParser._parse_file_pyshark")
+    @patch("TrafficAnalyzer.parsers.packet_parser.subprocess.Popen")
     def test_fast_parser_fills_missing_frame_gap_with_pyshark_range(self, mock_popen, mock_pyshark, _mock_which):
         class FakeProcess:
             def __init__(self, stdout_text: str, stderr_text: str, retcode: int):
@@ -304,10 +754,11 @@ class TestRegistryAndRuntime(unittest.TestCase):
         )
         mock_popen.return_value = FakeProcess(rows, "", 0)
 
-        def fake_pyshark(pcap_path, start_index=0, stop_index=None):
+        def fake_pyshark(pcap_path, start_index=0, stop_index=None, tls_keylog_path=None):
             self.assertEqual(pcap_path, "sample.pcap")
             self.assertEqual(start_index, 1)
             self.assertEqual(stop_index, 2)
+            self.assertIsNone(tls_keylog_path)
             return iter(
                 [
                     PacketRecord(
@@ -330,11 +781,83 @@ class TestRegistryAndRuntime(unittest.TestCase):
 
     def test_protocol_registry_build_order(self):
         parsers = build_protocol_parsers()
-        self.assertEqual([parser.name for parser in parsers], ["HTTP", "DNS", "TLS", "Modbus"])
+        self.assertEqual([parser.name for parser in parsers], ["HTTP", "DNS", "TLS", "Modbus", "USB"])
 
     def test_attack_registry_uses_detector_config(self):
         detectors = build_attack_detectors()
-        self.assertEqual([detector.name for detector in detectors], ["WebShellDetector"])
+        self.assertEqual([detector.name for detector in detectors], ["WebShellDetector", "SQLInjectionDetector"])
+
+    def test_job_manager_parse_sqli_bool_reconstructs_flag(self):
+        if not os.path.exists("tests/buuctf/sqli.pcap"):
+            self.skipTest("缺少 tests/buuctf/sqli.pcap 样本")
+
+        parser = PacketParser(mode="fast")
+        packets = list(parser.parse_file("tests/buuctf/sqli.pcap"))
+
+        service = build_default_pipeline_service()
+        report = service.analyze_packets(
+            packets,
+            source="unit-test",
+            enabled_protocols=[],
+            enabled_attacks=["SQLInjectionDetector"],
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            manager = JobManager(storage_root=tmpdir)
+            try:
+                project_dir = Path(tmpdir) / "project-1"
+                project_dir.mkdir(parents=True, exist_ok=True)
+                db_path = project_dir / "packets.sqlite3"
+                _init_packet_db(str(db_path))
+                conn = sqlite3.connect(str(db_path))
+                try:
+                    conn.executemany(
+                        "INSERT INTO packets (idx, packet_json) VALUES (?, ?)",
+                        [
+                            (
+                                packet.index,
+                                json.dumps(packet.__dict__, ensure_ascii=False, separators=(",", ":")),
+                            )
+                            for packet in packets
+                        ],
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                job = AnalysisJob(
+                    job_id="job-1",
+                    filename="sqli.pcap",
+                    temp_path="tests/buuctf/sqli.pcap",
+                    db_path=str(db_path),
+                    max_packets=None,
+                    project_dir=str(project_dir),
+                    metadata_path=str(project_dir / "meta.json"),
+                    status="parsed",
+                )
+                job.modules["attack:SQLInjectionDetector"] = ModuleExecution(
+                    module_type="attack",
+                    module_name="SQLInjectionDetector",
+                    status="completed",
+                    result={"alerts": [asdict(alert) for alert in report.alerts]},
+                )
+                manager.jobs[job.job_id] = job
+
+                result = manager.parse_sql_injection_bool(job.job_id)
+                marker_result = manager.parse_sql_injection_bool(job.job_id, true_marker="好耶")
+
+                self.assertTrue(result["matched"])
+                self.assertEqual(result["analysis_mode"], "response_length")
+                self.assertEqual(result["best_text"], "flag{c84bb04a-8663-4ee2-9449-349f1ee83e11}")
+                self.assertTrue(any(context.get("restored_text") == result["best_text"] for context in result["contexts"]))
+                self.assertTrue(any(context.get("true_length_values") for context in result["contexts"]))
+
+                self.assertTrue(marker_result["matched"])
+                self.assertEqual(marker_result["analysis_mode"], "marker_text")
+                self.assertEqual(marker_result["best_text"], "flag{c84bb04a-8663-4ee2-9449-349f1ee83e11}")
+            finally:
+                manager.jobs.clear()
+                manager.shutdown()
 
     def test_doctor_command_exists(self):
         parser = build_parser()
@@ -470,6 +993,59 @@ class TestRegistryAndRuntime(unittest.TestCase):
             finally:
                 manager.jobs.clear()
                 manager.shutdown()
+
+    def test_remove_module_does_not_reappear_in_status_or_recovered_project(self):
+        with TemporaryDirectory() as tmpdir:
+            storage_root = Path(tmpdir)
+            project_dir = storage_root / "project-1"
+            project_dir.mkdir(parents=True, exist_ok=True)
+            db_path = project_dir / "packets.sqlite3"
+            _init_packet_db(str(db_path))
+
+            manager = JobManager(storage_root=tmpdir)
+            recovered_manager = None
+            try:
+                job = AnalysisJob(
+                    job_id="job-1",
+                    project_id="project-1",
+                    filename="sample.pcap",
+                    temp_path="sample.pcap",
+                    db_path=str(db_path),
+                    max_packets=None,
+                    project_dir=str(project_dir),
+                    metadata_path=str(project_dir / "meta.json"),
+                    status="parsed",
+                )
+                module = ModuleExecution(
+                    module_type="protocol",
+                    module_name="HTTP",
+                    status="completed",
+                    result={
+                        "module": {"type": "protocol", "name": "HTTP"},
+                        "summary": {"packet_count": 1, "protocol_event_count": 1, "alert_count": 0},
+                        "detail": {"request_count": 1},
+                    },
+                )
+                job.modules[module.key] = module
+                manager.jobs[job.job_id] = job
+                manager._persist_job(job)
+
+                removed = manager.remove_module(job.job_id, "protocol", "HTTP")
+                self.assertTrue(removed["removed"])
+
+                status_payload = manager.job_status(job.job_id)
+                self.assertEqual(status_payload["job"]["modules"], [])
+
+                recovered_manager = JobManager(storage_root=tmpdir)
+                payload = recovered_manager.load_project("project-1")
+                self.assertEqual(payload["job"]["modules"], [])
+                self.assertEqual(payload["results"]["modules"], [])
+            finally:
+                manager.jobs.clear()
+                manager.shutdown()
+                if recovered_manager is not None:
+                    recovered_manager.jobs.clear()
+                    recovered_manager.shutdown()
 
     def test_project_persistence_supports_recover_and_delete_by_project_id(self):
         with TemporaryDirectory() as tmpdir:
@@ -687,8 +1263,15 @@ class TestRegistryAndRuntime(unittest.TestCase):
             split_files = ["chunk-a.pcap", "chunk-b.pcap"]
             mock_loader_cls.return_value.split_pcap.return_value = split_files
 
-            def fake_parse_chunk(pcap_path, progress_callback=None, progress_interval=1000, output_path=None):
+            def fake_parse_chunk(
+                pcap_path,
+                progress_callback=None,
+                progress_interval=1000,
+                output_path=None,
+                tls_keylog_text=None,
+            ):
                 assert output_path is not None
+                self.assertIsNone(tls_keylog_text)
                 payloads = {
                     "chunk-a.pcap": [
                         {"timestamp": 1.0, "flow_id": "a-0", "src_ip": "10.0.0.1"},
@@ -735,7 +1318,7 @@ class TestRegistryAndRuntime(unittest.TestCase):
                     max_packets=None,
                 )
 
-                parsed_count, returned_split_files, split_dir = manager._run_parallel_base_parse(
+                parsed_count, returned_split_files, split_dir, basic_protocol_counter = manager._run_parallel_base_parse(
                     job=job,
                     conn=conn,
                     batch=[],
@@ -744,6 +1327,7 @@ class TestRegistryAndRuntime(unittest.TestCase):
                 self.assertEqual(parsed_count, 3)
                 self.assertEqual(returned_split_files, split_files)
                 self.assertEqual(split_dir, "")
+                self.assertEqual(dict(basic_protocol_counter), {})
 
                 rows = conn.execute("SELECT idx, packet_json FROM packets ORDER BY idx").fetchall()
                 packets = [json.loads(packet_json) for _, packet_json in rows]

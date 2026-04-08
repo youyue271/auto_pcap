@@ -1,7 +1,10 @@
 import base64
 import os
+from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,6 +13,8 @@ from TrafficAnalyzer.core.models import PacketRecord
 from TrafficAnalyzer.benchmarks.lazy_parse import build_parser as build_benchmark_parser
 from TrafficAnalyzer.parsers.packet_parser import PacketParser
 from TrafficAnalyzer.pipeline.service import build_default_pipeline_service
+from TrafficAnalyzer.protocols.http_parser import HTTPProtocolParser
+from TrafficAnalyzer.utils.tls_keylog import resolve_tls_keylog_text
 
 
 class TestPipelineService(unittest.TestCase):
@@ -338,6 +343,368 @@ class TestPipelineService(unittest.TestCase):
         self.assertEqual(site_pages[0]["response_packet_index"], 1)
         self.assertIsNone(site_pages[0].get("url"))
 
+    def test_http_details_extract_multipart_post_file_uploads(self):
+        service = build_default_pipeline_service()
+        boundary = "----WebKitFormBoundaryDemoUpload"
+        packet = PacketRecord(
+            index=10,
+            timestamp=10.0,
+            flow_id="flow-upload-1",
+            src_ip="10.0.0.10",
+            dst_ip="10.0.0.20",
+            src_port=50001,
+            dst_port=80,
+            proto="6",
+            layers=["ip", "tcp", "http"],
+            raw={
+                "http": {
+                    "request_method": "POST",
+                    "host": "upload.demo",
+                    "request_uri": "/upload",
+                    "content_type": f"multipart/form-data; boundary={boundary}",
+                    "file_data": (
+                        f"--{boundary}\r\n"
+                        'Content-Disposition: form-data; name="file"; filename="sslkey.log"\r\n'
+                        "Content-Type: text/plain\r\n\r\n"
+                        "CLIENT_RANDOM deadbeef cafebabe\r\n"
+                        f"--{boundary}\r\n"
+                        'Content-Disposition: form-data; name="submit"\r\n\r\n'
+                        "upload\r\n"
+                        f"--{boundary}--\r\n"
+                    ),
+                }
+            },
+        )
+
+        report = service.analyze_packets(
+            [packet],
+            source="unit-test",
+            enabled_protocols=["HTTP"],
+            enabled_attacks=[],
+        )
+
+        detail = report.stats["detailed_views"]["HTTP"]
+        uploads = detail["uploads"]
+
+        self.assertEqual(detail["upload_count"], 1)
+        self.assertEqual(uploads[0]["field_name"], "file")
+        self.assertEqual(uploads[0]["filename"], "sslkey.log")
+        self.assertEqual(uploads[0]["part_content_type"], "text/plain")
+        self.assertIn("CLIENT_RANDOM", str(uploads[0]["preview"] or ""))
+        self.assertEqual(detail["top_upload_filenames"][0][0], "sslkey.log")
+
+    def test_usb_details_decode_mouse_trace_from_sample(self):
+        service = build_default_pipeline_service()
+        report = service.analyze_file(
+            "tests/buuctf/mouse.pcapng",
+            enabled_protocols=["USB"],
+            enabled_attacks=[],
+        )
+
+        detail = report.stats["detailed_views"]["USB"]
+        devices = detail["devices"]
+        mouse = detail["mouse"]
+        mouse_devices = [item for item in devices if "mouse" in (item.get("roles") or [])]
+
+        self.assertGreater(detail["hid_report_count"], 3000)
+        self.assertGreater(mouse["report_count"], 3000)
+        self.assertEqual(detail["keyboard_report_count"], 0)
+        self.assertTrue(any(item.get("vendor_id") == "0x046d" for item in mouse_devices))
+        self.assertGreater((mouse.get("bbox") or {}).get("width", 0), 100)
+        self.assertGreater((mouse.get("bbox") or {}).get("height", 0), 100)
+        self.assertGreater(len(mouse.get("trace_points") or []), 3000)
+        self.assertEqual(mouse.get("draw_segment_count"), 7)
+        self.assertEqual(mouse.get("draw_noise_segment_count"), 3)
+        self.assertGreater(mouse.get("draw_point_count") or 0, 1300)
+        self.assertGreater((mouse.get("draw_bbox") or {}).get("width", 0), 300)
+        self.assertGreater((mouse.get("draw_bbox") or {}).get("height", 0), 100)
+
+    def test_usb_details_rebuild_keyboard_streams(self):
+        service = build_default_pipeline_service()
+
+        def key_report(index: int, keycode: int) -> PacketRecord:
+            return PacketRecord(
+                index=index,
+                timestamp=float(index),
+                flow_id="unknown",
+                layers=["usb", "usbhid"],
+                raw={
+                    "usb": {
+                        "device_address": "7",
+                        "endpoint_address_number": "1",
+                        "endpoint_address_direction": "1",
+                        "bInterfaceClass": "0x03",
+                    },
+                    "usbhid": {
+                        "data": f"0000{keycode:02x}0000000000",
+                    },
+                },
+            )
+
+        def release_report(index: int) -> PacketRecord:
+            return PacketRecord(
+                index=index,
+                timestamp=float(index),
+                flow_id="unknown",
+                layers=["usb", "usbhid"],
+                raw={
+                    "usb": {
+                        "device_address": "7",
+                        "endpoint_address_number": "1",
+                        "endpoint_address_direction": "1",
+                        "bInterfaceClass": "0x03",
+                    },
+                    "usbhid": {
+                        "data": "0000000000000000",
+                    },
+                },
+            )
+
+        packets = [
+            PacketRecord(
+                index=0,
+                timestamp=0.0,
+                flow_id="unknown",
+                layers=["usb"],
+                raw={
+                    "usb": {
+                        "device_address": "7",
+                        "idVendor": "0x1234",
+                        "idProduct": "0xabcd",
+                        "bInterfaceClass": "0x03",
+                        "bInterfaceSubClass": "0x01",
+                        "bInterfaceProtocol": "0x01",
+                    }
+                },
+            ),
+            key_report(1, 0x04),   # a
+            release_report(2),
+            key_report(3, 0x05),   # b
+            release_report(4),
+            key_report(5, 0x06),   # c
+            release_report(6),
+            key_report(7, 0x2C),   # space
+            release_report(8),
+            key_report(9, 0x07),   # d
+            release_report(10),
+            key_report(11, 0x28),  # enter
+            release_report(12),
+            key_report(13, 0x08),  # e
+            release_report(14),
+            key_report(15, 0x2A),  # backspace
+            release_report(16),
+            key_report(17, 0x09),  # f
+            release_report(18),
+        ]
+
+        report = service.analyze_packets(
+            packets,
+            source="unit-test",
+            enabled_protocols=["USB"],
+            enabled_attacks=[],
+        )
+
+        detail = report.stats["detailed_views"]["USB"]
+        keyboard = detail["keyboard"]
+        devices = detail["devices"]
+
+        self.assertEqual(detail["mouse_report_count"], 0)
+        self.assertGreaterEqual(keyboard["event_count"], 8)
+        self.assertEqual(keyboard["full_text"], "abc d\ne<BS>f")
+        self.assertEqual(keyboard["edited_text"], "abc d\nf")
+        self.assertEqual(devices[0]["roles"], ["keyboard"])
+        self.assertEqual(devices[0]["vendor_id"], "0x1234")
+
+    def test_usb_details_rebuild_storage_writes_and_parse_exfat_root_directory(self):
+        if not os.path.exists("tests/buuctf/traffic.pacpng.pcapng"):
+            self.skipTest("缺少 tests/buuctf/traffic.pacpng.pcapng 样本")
+
+        service = build_default_pipeline_service()
+        report = service.analyze_file(
+            "tests/buuctf/traffic.pacpng.pcapng",
+            enabled_protocols=["USB"],
+            enabled_attacks=[],
+        )
+
+        detail = report.stats["detailed_views"]["USB"]
+        storage = detail["storage"]
+        exfat = storage["exfat"]
+        files = exfat["files"]
+        devices = detail["devices"]
+
+        self.assertGreater(detail["storage_event_count"], 0)
+        self.assertGreater(storage["command_count"], 0)
+        self.assertGreater(storage["write_count"], 0)
+        self.assertTrue(exfat["detected"])
+        self.assertEqual(exfat["boot_lba"], 2048)
+        self.assertEqual(exfat["root_dir_first_lba"], 18432)
+        self.assertGreaterEqual(exfat["root_sector_count"], 2)
+
+        storage_devices = [item for item in devices if "storage" in (item.get("roles") or [])]
+        self.assertTrue(storage_devices)
+        self.assertGreater(storage_devices[0]["storage_command_count"], 0)
+        self.assertGreater(storage_devices[0]["storage_write_count"], 0)
+
+        flag_file = next((item for item in files if item.get("filename") == "flag.7z"), None)
+        self.assertIsNotNone(flag_file)
+        self.assertEqual(flag_file["size"], 226)
+        self.assertEqual(flag_file["start_cluster"], 149412)
+        self.assertEqual(flag_file["first_lba"], 38266624)
+
+    def test_usb_details_export_reconstructed_writes_and_exfat_files(self):
+        if not os.path.exists("tests/buuctf/traffic.pacpng.pcapng"):
+            self.skipTest("缺少 tests/buuctf/traffic.pacpng.pcapng 样本")
+
+        service = build_default_pipeline_service()
+        export_root = Path("/virtual/artifacts")
+        capture_dir = export_root / "usb_storage" / "traffic_mock"
+        written_files: dict[str, bytes] = {}
+
+        def record_write(path_obj: Path, data: bytes) -> int:
+            written_files[str(path_obj)] = bytes(data)
+            return len(data)
+
+        with patch.object(service, "_usb_storage_export_context", return_value=(export_root, capture_dir)):
+            with patch("pathlib.Path.mkdir", autospec=True, return_value=None):
+                with patch("pathlib.Path.write_bytes", autospec=True, side_effect=record_write):
+                    report = service.analyze_file(
+                        "tests/buuctf/traffic.pacpng.pcapng",
+                        enabled_protocols=["USB"],
+                        enabled_attacks=[],
+                    )
+
+        detail = report.stats["detailed_views"]["USB"]
+        storage = detail["storage"]
+        exfat = storage["exfat"]
+
+        self.assertGreater(storage["write_export_count"], 0)
+        boot_write = next((item for item in storage["writes"] if item.get("first_lba") == 2048), None)
+        self.assertIsNotNone(boot_write)
+        self.assertTrue(str(boot_write.get("url") or "").startswith("/artifacts/"))
+        self.assertTrue(str(boot_write.get("viewer_url") or "").startswith("/artifact-view?path="))
+        boot_write_bytes = written_files.get(str(boot_write["saved_path"])) or b""
+        self.assertTrue(boot_write_bytes.startswith(b"\xebv\x90EXFAT   "))
+
+        self.assertGreaterEqual(exfat["exported_file_count"], 1)
+        flag_file = next((item for item in exfat["files"] if item.get("filename") == "flag.7z"), None)
+        self.assertIsNotNone(flag_file)
+        self.assertEqual(flag_file["export_status"], "exported")
+        self.assertTrue(str(flag_file.get("url") or "").startswith("/artifacts/"))
+        self.assertTrue(str(flag_file.get("viewer_url") or "").startswith("/artifact-view?path="))
+        flag_bytes = written_files.get(str(flag_file["saved_path"])) or b""
+        self.assertEqual(len(flag_bytes), 226)
+        self.assertTrue(flag_bytes.startswith(b"7z\xbc\xaf\x27\x1c"))
+
+    def test_http_details_groups_and_exports_uploaded_files(self):
+        service = build_default_pipeline_service()
+        boundary = "----WebKitFormBoundaryDemoUpload"
+        packet = PacketRecord(
+            index=10,
+            timestamp=10.0,
+            flow_id="flow-upload-1",
+            src_ip="10.0.0.10",
+            dst_ip="10.0.0.20",
+            src_port=50001,
+            dst_port=80,
+            proto="6",
+            layers=["ip", "tcp", "http"],
+            raw={
+                "http": {
+                    "request_method": "POST",
+                    "host": "upload.demo",
+                    "request_uri": "/upload?debug=1",
+                    "content_type": f"multipart/form-data; boundary={boundary}",
+                    "file_data": (
+                        f"--{boundary}\r\n"
+                        'Content-Disposition: form-data; name="file"; filename="sslkey.log"\r\n'
+                        "Content-Type: text/plain\r\n\r\n"
+                        "CLIENT_RANDOM deadbeef cafebabe\r\n"
+                        f"--{boundary}--\r\n"
+                    ),
+                }
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            capture_path = Path(tmpdir) / "demo-upload.pcapng"
+            capture_path.write_bytes(b"pcap-placeholder")
+            service.http_export_root = Path(tmpdir) / "artifacts"
+
+            report = service.analyze_packets(
+                [packet],
+                source=str(capture_path),
+                enabled_protocols=["HTTP"],
+                enabled_attacks=[],
+            )
+
+            detail = report.stats["detailed_views"]["HTTP"]
+            uploads = detail["uploads"]
+            upload_points = detail["upload_points"]
+
+            self.assertEqual(detail["upload_count"], 1)
+            self.assertEqual(detail["upload_points_total"], 1)
+            self.assertEqual(detail["upload_files_exported"], 1)
+            self.assertEqual(detail["upload_targets_total"], 1)
+            self.assertEqual(uploads[0]["uri_path"], "/upload")
+            self.assertNotIn("_body_text", uploads[0])
+            self.assertTrue(str(uploads[0].get("url") or "").startswith("/artifacts/"))
+            self.assertIn("/http_rebuild/", str(uploads[0].get("saved_path") or ""))
+            self.assertIn("/http_uploads/", str(uploads[0].get("saved_path") or ""))
+            self.assertTrue(os.path.isfile(str(uploads[0]["saved_path"])))
+
+            exported_body = Path(str(uploads[0]["saved_path"])).read_text(encoding="utf-8")
+            self.assertIn("CLIENT_RANDOM deadbeef cafebabe", exported_body)
+
+            self.assertEqual(len(upload_points), 1)
+            self.assertEqual(upload_points[0]["server_ip"], "10.0.0.20")
+            self.assertEqual(upload_points[0]["host"], "upload.demo")
+            self.assertEqual(upload_points[0]["uri_path"], "/upload")
+            self.assertEqual(upload_points[0]["method"], "POST")
+            self.assertEqual(upload_points[0]["upload_count"], 1)
+            self.assertEqual(upload_points[0]["request_count"], 1)
+            self.assertEqual(upload_points[0]["files"][0]["filename"], "sslkey.log")
+            self.assertTrue(str(upload_points[0]["files"][0].get("url") or "").startswith("/artifacts/"))
+
+    def test_tls_keylog_sample_decrypts_https_login_and_exposes_flag(self):
+        extractor = PacketParser(mode="fast")
+        upload_packets = list(
+            extractor.parse_file(
+                "tests/buuctf/tls.pcapng",
+                protocol_parsers=[HTTPProtocolParser()],
+            )
+        )
+
+        uploaded_keylog = None
+        for packet in upload_packets:
+            http = packet.raw.get("http", {}) if isinstance(packet.raw, dict) else {}
+            payload = str(http.get("file_data") or "")
+            if "CLIENT_HANDSHAKE_TRAFFIC_SECRET" in payload:
+                uploaded_keylog = payload
+                break
+
+        self.assertIsNotNone(uploaded_keylog)
+        normalized_keylog, meta = resolve_tls_keylog_text(key_text=uploaded_keylog)
+        self.assertIsNotNone(normalized_keylog)
+        self.assertGreater(meta["line_count"], 0)
+
+        service = build_default_pipeline_service()
+        report = service.analyze_file(
+            "tests/buuctf/tls.pcapng",
+            enabled_protocols=["HTTP"],
+            enabled_attacks=[],
+            tls_keylog_text=normalized_keylog,
+        )
+
+        detail = report.stats["detailed_views"]["HTTP"]
+        requests = detail["requests"]
+        login_request = next(
+            item for item in requests
+            if item.get("uri") == "/User_API/User/Login"
+            and item.get("method") == "POST"
+            and "flag{" in str(item.get("payload_preview") or "")
+        )
+        self.assertIn("flag{e3364403651e775bfb9b3ffa06b69994}", str(login_request.get("payload_preview") or ""))
+
     def test_webshell_detector_identifies_atta1_as_china_chopper_like_http_traffic(self):
         service = build_default_pipeline_service()
         report = service.analyze_file(
@@ -415,6 +782,75 @@ class TestPipelineService(unittest.TestCase):
         self.assertTrue(any('crypto=raw-body marker + base64 + XOR(key=e10adc39) + zlib' in item for item in logs))
         self.assertTrue(any("marker_p=vkzJl2VQbzhPhLHS" in item for item in logs))
         self.assertTrue(any("@eval(@gzuncompress(@x(@base64_decode($m[1]),$k)))" in item for item in scripts))
+
+    def test_webshell_detector_identifies_dynamic_loader_godzilla_in_buuctf_sample(self):
+        if not os.path.exists("tests/buuctf/Godzilla.pcap"):
+            self.skipTest("缺少 tests/buuctf/Godzilla.pcap 样本")
+
+        parser = PacketParser(mode="fast")
+        packets = list(parser.parse_file("tests/buuctf/Godzilla.pcap"))
+
+        service = build_default_pipeline_service()
+        report = service.analyze_packets(
+            packets,
+            source="unit-test",
+            enabled_protocols=[],
+            enabled_attacks=["WebShellDetector"],
+        )
+
+        detail = report.stats["attack_detailed_views"]["WebShellDetector"]
+        records = detail["records"]
+        rule_ids = {alert.rule_id for alert in report.alerts}
+        labels = [str(item.get("possible_webshell") or "") for item in records]
+        commands = [str(item.get("interaction_command") or "") for item in records]
+        logs = [str(item.get("log_output") or "") for item in records]
+        scripts = [str(item.get("php_script") or "") for item in records]
+
+        self.assertIn("ATTACK.WEBSHELL.GODZILLA_LIKE", rule_ids)
+        self.assertTrue(any(label.startswith("可能是哥斯拉类 PHP WebShell") for label in labels))
+        self.assertTrue(any("uri=/aaa.php" in item for item in logs))
+        self.assertTrue(any("pass_param=babyshell" in item for item in logs))
+        self.assertTrue(any("loader_param=ctfsogood" in item for item in logs))
+        self.assertTrue(any("session_key=421eb7f1b8e4b3cf" in item for item in logs))
+        self.assertTrue(any("marker_left=8dddd282f7b5125b" in item for item in logs))
+        self.assertTrue(any("marker_right=6b1ce45ad828e150" in item for item in logs))
+        self.assertTrue(any("$pass='babyshell';" in item and "$key='421eb7f1b8e4b3cf';" in item for item in scripts))
+        self.assertTrue(any("methodName=test" in item for item in commands))
+        self.assertTrue(any("methodName=getBasicsInfo" in item for item in commands))
+        self.assertTrue(any("> ls -al /" in item for item in commands))
+        self.assertTrue(any("> cat /.sercet*" in item and "Godzilla1sS000Int3rEstIng" in item for item in commands))
+        self.assertTrue(any("> date" in item for item in commands))
+        self.assertTrue(any("ok" in item for item in commands))
+        self.assertTrue(any("fail!" in item for item in commands))
+
+    def test_sql_injection_detector_identifies_bool_blind_in_buuctf_sample(self):
+        if not os.path.exists("tests/buuctf/sqli.pcap"):
+            self.skipTest("缺少 tests/buuctf/sqli.pcap 样本")
+
+        service = build_default_pipeline_service()
+        report = service.analyze_file(
+            "tests/buuctf/sqli.pcap",
+            enabled_protocols=[],
+            enabled_attacks=["SQLInjectionDetector"],
+        )
+
+        detail = report.stats["attack_detailed_views"]["SQLInjectionDetector"]
+        records = detail["records"]
+        rule_ids = {alert.rule_id for alert in report.alerts}
+        labels = [str(item.get("possible_sqli") or "") for item in records]
+        points = detail.get("injection_points") or []
+        targets = detail.get("target_expressions") or []
+        previews = [str((alert.evidence or {}).get("response_preview") or "") for alert in report.alerts]
+
+        self.assertIn("ATTACK.SQLI.BOOL_BLIND", rule_ids)
+        self.assertIn("Bool 盲注", detail.get("supported_sqli_types") or [])
+        self.assertTrue(any(label == "可能是 Bool 盲注 SQL 注入" for label in labels))
+        self.assertTrue(any("/comments.php" in item for item in points))
+        self.assertTrue(any(item.get("param_name") == "name" for item in records))
+        self.assertTrue(any(item.get("bool_position") == 1 and item.get("bool_candidate") == "f" for item in records))
+        self.assertTrue(any("select(text)from(wfy_comments)where(id=100)" in str(item or "") for item in targets))
+        self.assertTrue(any("好耶" in item for item in previews))
+        self.assertTrue(any("啊哦" in item for item in previews))
 
     def test_webshell_detector_identifies_cookie_exec_shell_in_ljrhg_2_sample(self):
         if not os.path.exists("tests/陇剑rhg/2.pcapng"):
