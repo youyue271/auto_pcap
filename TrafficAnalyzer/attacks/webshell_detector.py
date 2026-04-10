@@ -105,6 +105,7 @@ class WebShellDetector(BaseAttackDetector):
 
             details = event.details or {}
             tcp_stream = str(details.get("tcp_stream") or self._packet_tcp_stream(packet) or "").strip() or None
+            flow_key = tcp_stream or packet.flow_id
             method = str(details.get("method") or "").upper()
             payload = str(details.get("payload") or "")
             uri = str(details.get("uri") or "")
@@ -134,7 +135,7 @@ class WebShellDetector(BaseAttackDetector):
                 )
             else:
                 self._apply_response_family_parsers(
-                    flow_id=packet.flow_id,
+                    flow_id=flow_key,
                     packet_index=packet.index,
                     evidence=evidence,
                     payload=payload,
@@ -156,7 +157,7 @@ class WebShellDetector(BaseAttackDetector):
             )
             alert = self._build_alert(packet, evidence)
             alerts.append(alert)
-            self._queue_request_for_response(packet.flow_id, alert)
+            self._queue_request_for_response(flow_key, alert)
             self._schedule_stream_recovery(alert)
 
         return alerts
@@ -602,6 +603,12 @@ class WebShellDetector(BaseAttackDetector):
         request_evidence = request_alert.evidence
         request_evidence["linked_response_packet_index"] = response_packet_index
         self._merge_parsed_output_fields(request_evidence, parsed_output)
+        request_evidence["php_script_source"] = request_details.get("php_script_source")
+        request_evidence["crypto_summary"] = request_details.get("crypto_summary")
+        request_evidence["loader_param"] = request_details.get("loader_param")
+        request_evidence["payload_name"] = request_details.get("payload_name")
+        request_evidence["session_key"] = request_details.get("session_key")
+        request_evidence["loader_wrapper"] = request_details.get("loader_wrapper")
         self._refresh_terminal_transcript(request_evidence)
 
     def _attach_cookie_exec_output(
@@ -633,6 +640,12 @@ class WebShellDetector(BaseAttackDetector):
         request_evidence = request_alert.evidence
         request_evidence["linked_response_packet_index"] = response_packet_index
         self._merge_parsed_output_fields(request_evidence, parsed_output)
+        request_evidence["php_script_source"] = request_details.get("php_script_source")
+        request_evidence["crypto_summary"] = request_details.get("crypto_summary")
+        request_evidence["loader_param"] = request_details.get("loader_param")
+        request_evidence["payload_name"] = request_details.get("payload_name")
+        request_evidence["session_key"] = request_details.get("session_key")
+        request_evidence["loader_wrapper"] = request_details.get("loader_wrapper")
         self._refresh_terminal_transcript(request_evidence)
 
     def _attach_godzilla_output(
@@ -655,6 +668,10 @@ class WebShellDetector(BaseAttackDetector):
         response_details["crypto_summary"] = request_details.get("crypto_summary")
         response_details["session_markers"] = request_details.get("session_markers")
         response_details["godzilla_variant_id"] = request_details.get("godzilla_variant_id")
+        response_details["loader_param"] = request_details.get("loader_param")
+        response_details["payload_name"] = request_details.get("payload_name")
+        response_details["session_key"] = request_details.get("session_key")
+        response_details["loader_wrapper"] = request_details.get("loader_wrapper")
         self._refresh_terminal_transcript(response_details)
         response_details["fingerprint_hits"] = list(
             dict.fromkeys(list(response_details.get("fingerprint_hits") or []) + ["godzilla_response_parser"])
@@ -663,6 +680,12 @@ class WebShellDetector(BaseAttackDetector):
         request_evidence = request_alert.evidence
         request_evidence["linked_response_packet_index"] = response_packet_index
         self._merge_parsed_output_fields(request_evidence, parsed_output)
+        request_evidence["php_script_source"] = request_details.get("php_script_source")
+        request_evidence["crypto_summary"] = request_details.get("crypto_summary")
+        request_evidence["loader_param"] = request_details.get("loader_param")
+        request_evidence["payload_name"] = request_details.get("payload_name")
+        request_evidence["session_key"] = request_details.get("session_key")
+        request_evidence["loader_wrapper"] = request_details.get("loader_wrapper")
         self._refresh_terminal_transcript(request_evidence)
 
     def _merge_parsed_output_fields(self, target: dict[str, Any], parsed_output: dict[str, Any]) -> None:
@@ -685,6 +708,11 @@ class WebShellDetector(BaseAttackDetector):
             "request_summary",
             "terminal_command",
             "php_script_source",
+            "loader_param",
+            "payload_name",
+            "session_key",
+            "loader_wrapper",
+            "decoded_request",
             "request_cookie_name",
             "response_cookie_name",
             "response_delimiter",

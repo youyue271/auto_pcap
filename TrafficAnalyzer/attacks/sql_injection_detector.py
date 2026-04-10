@@ -25,6 +25,24 @@ class SQLInjectionDetector(BaseAttackDetector):
         """,
         re.VERBOSE,
     )
+    _ASCII_SUBSTR_COMPARE_PATTERN = re.compile(
+        r"""
+        (?is)
+        \bascii\s*\(\s*
+            substr\s*\(\s*\((?P<target>.+?)\)\s*,\s*(?P<position>\d+)\s*,\s*1\s*\)
+        \s*\)\s*
+        (?P<operator>>=|<=|=|>|<)\s*(?P<threshold>-?\d+)
+        """,
+        re.VERBOSE,
+    )
+    _LENGTH_COMPARE_PATTERN = re.compile(
+        r"""
+        (?is)
+        \blength\s*\(\s*\((?P<target>.+?)\)\s*\)\s*
+        (?P<operator>>=|<=|=|>|<)\s*(?P<threshold>-?\d+)
+        """,
+        re.VERBOSE,
+    )
     _TRUE_HINTS = ("好耶", "存在", "found", "success", "welcome")
     _FALSE_HINTS = ("不存在", "未找到", "啊哦", "not found", "error")
 
@@ -116,7 +134,7 @@ class SQLInjectionDetector(BaseAttackDetector):
         packet: PacketRecord,
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        seen: set[tuple[str, str, int, str]] = set()
+        seen: set[tuple[str, str, int, str, str, int]] = set()
         parsed = urlsplit(uri)
         uri_path = parsed.path or str(uri or "")
 
@@ -129,6 +147,8 @@ class SQLInjectionDetector(BaseAttackDetector):
                 str(matched.get("target_expression") or "").strip(),
                 int(matched.get("position") or 0),
                 str(matched.get("candidate_char") or ""),
+                str(matched.get("compare_kind") or ""),
+                int(matched.get("compare_value") or 0),
             )
             if signature in seen:
                 continue
@@ -151,6 +171,9 @@ class SQLInjectionDetector(BaseAttackDetector):
                     "position": matched.get("position"),
                     "candidate_char": matched.get("candidate_char"),
                     "param_location": param_location,
+                    "compare_kind": matched.get("compare_kind"),
+                    "compare_operator": matched.get("compare_operator"),
+                    "compare_value": matched.get("compare_value"),
                     "true_branch": matched.get("true_branch"),
                     "false_branch": matched.get("false_branch"),
                     "request_packet_index": packet.index,
@@ -178,24 +201,66 @@ class SQLInjectionDetector(BaseAttackDetector):
         if not text:
             return None
         match = self._BOOL_SUBSTR_PATTERN.search(text)
+        if match is not None:
+            candidate_char = str(match.group("char") or "")
+            if len(candidate_char) != 1:
+                return None
+
+            target_expression = self._normalize_target_expression(str(match.group("target") or ""))
+            position = self._safe_int(match.group("position"))
+            if not target_expression or position is None or position <= 0:
+                return None
+
+            return {
+                "target_expression": target_expression,
+                "position": position,
+                "candidate_char": candidate_char,
+                "compare_kind": "substr_eq",
+                "compare_operator": "=",
+                "compare_value": ord(candidate_char),
+                "true_branch": self._safe_int(match.group("true_branch")),
+                "false_branch": self._safe_int(match.group("false_branch")),
+            }
+
+        match = self._ASCII_SUBSTR_COMPARE_PATTERN.search(text)
+        if match is not None:
+            target_expression = self._normalize_target_expression(str(match.group("target") or ""))
+            position = self._safe_int(match.group("position"))
+            threshold = self._safe_int(match.group("threshold"))
+            operator = str(match.group("operator") or "").strip()
+            if not target_expression or position is None or position <= 0 or threshold is None or not operator:
+                return None
+
+            return {
+                "target_expression": target_expression,
+                "position": position,
+                "candidate_char": None,
+                "compare_kind": "ascii_substr_compare",
+                "compare_operator": operator,
+                "compare_value": threshold,
+                "true_branch": None,
+                "false_branch": None,
+            }
+
+        match = self._LENGTH_COMPARE_PATTERN.search(text)
         if match is None:
             return None
 
-        candidate_char = str(match.group("char") or "")
-        if len(candidate_char) != 1:
-            return None
-
-        target_expression = self._normalize_space(str(match.group("target") or ""))
-        position = self._safe_int(match.group("position"))
-        if not target_expression or position is None or position <= 0:
+        target_expression = self._normalize_target_expression(str(match.group("target") or ""))
+        threshold = self._safe_int(match.group("threshold"))
+        operator = str(match.group("operator") or "").strip()
+        if not target_expression or threshold is None or not operator:
             return None
 
         return {
             "target_expression": target_expression,
-            "position": position,
-            "candidate_char": candidate_char,
-            "true_branch": self._safe_int(match.group("true_branch")),
-            "false_branch": self._safe_int(match.group("false_branch")),
+            "position": None,
+            "candidate_char": None,
+            "compare_kind": "length_compare",
+            "compare_operator": operator,
+            "compare_value": threshold,
+            "true_branch": None,
+            "false_branch": None,
         }
 
     def _format_injection_point(self, *, method: str, uri_path: str, param_location: str, param_name: str) -> str:
@@ -222,6 +287,26 @@ class SQLInjectionDetector(BaseAttackDetector):
 
     def _normalize_space(self, value: str) -> str:
         return re.sub(r"\s+", " ", str(value or "")).strip()
+
+    def _normalize_target_expression(self, value: str) -> str:
+        text = self._normalize_space(value)
+        while text.startswith("(") and text.endswith(")"):
+            inner = text[1:-1].strip()
+            if not inner or not self._has_balanced_parentheses(inner):
+                break
+            text = inner
+        return self._normalize_space(text)
+
+    def _has_balanced_parentheses(self, value: str) -> bool:
+        depth = 0
+        for char in str(value or ""):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth < 0:
+                    return False
+        return depth == 0
 
     def _safe_int(self, value: object) -> int | None:
         try:

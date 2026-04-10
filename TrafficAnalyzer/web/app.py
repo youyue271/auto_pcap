@@ -19,9 +19,19 @@ from TrafficAnalyzer.web.job_manager import HTTPError, JobManager
 BASE_DIR = Path(__file__).resolve().parent
 ARTIFACTS_DIR = BASE_DIR.parent.parent / "data" / "webshell_exports"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+CYBERCHEF_STATIC_DIR = Path("/mnt/e/STEVE/software/CRYPTO/CyberChef_v9.21.0")
+CYBERCHEF_ENTRY_NAME = "CyberChef_v10.5.2.html"
+CYBERCHEF_FALLBACK_URL = f"file:///E:/STEVE/software/CRYPTO/CyberChef_v9.21.0/{CYBERCHEF_ENTRY_NAME}"
+CYBERCHEF_LOCAL_URL = (
+    f"/cyberchef-static/{CYBERCHEF_ENTRY_NAME}"
+    if (CYBERCHEF_STATIC_DIR / CYBERCHEF_ENTRY_NAME).exists()
+    else CYBERCHEF_FALLBACK_URL
+)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="TrafficAnalyzer Web UI", version="0.1.0")
 app.mount("/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="artifacts")
+if CYBERCHEF_STATIC_DIR.exists():
+    app.mount("/cyberchef-static", StaticFiles(directory=str(CYBERCHEF_STATIC_DIR)), name="cyberchef-static")
 job_manager = JobManager()
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
@@ -31,7 +41,10 @@ async def index(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"report": None},
+        context={
+            "report": None,
+            "cyberchef_url": CYBERCHEF_LOCAL_URL,
+        },
     )
 
 
@@ -65,6 +78,7 @@ async def artifact_view(request: Request, path: str):
             "artifact_size": artifact_path.stat().st_size,
             "raw_url": artifact_raw_url(relative_path),
             "viewer_url": artifact_viewer_url(relative_path),
+            "cyberchef_url": CYBERCHEF_LOCAL_URL,
         },
     )
 

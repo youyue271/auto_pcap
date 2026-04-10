@@ -7,6 +7,7 @@ WIRESHARK_FAST_PATH_COMMAND = "tshark"
 WIRESHARK_SPLIT_COMMANDS = ("editcap", "capinfos")
 
 PROTOCOL_PARSER_PATHS = (
+    "TrafficAnalyzer.protocols.ftp_parser.FTPProtocolParser",
     "TrafficAnalyzer.protocols.http_parser.HTTPProtocolParser",
     "TrafficAnalyzer.protocols.dns_parser.DNSProtocolParser",
     "TrafficAnalyzer.protocols.tls_parser.TLSProtocolParser",

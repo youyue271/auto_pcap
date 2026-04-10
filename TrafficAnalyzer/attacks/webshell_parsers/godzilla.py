@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import gzip
 import hashlib
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 import re
 from typing import Any
 import zlib
@@ -270,20 +270,56 @@ if (isset($_POST[$pass])){
         raw_size = len(self._b64decode_loose(str(request_data["encoded"])))
         operation = "session_payload_init" if raw_size >= 256 else "encrypted_command"
         request_summary = "发送 Godzilla Session 初始化载荷" if operation == "session_payload_init" else "发送 Godzilla Session 加密请求"
-        return {
+        terminal_command = None
+        target_path = None
+        decoded_request = None
+
+        session_key = str(request_data.get("session_key") or variant.get("session_key") or "").strip()
+        if session_key:
+            decoded_request = self._describe_session_blob(
+                self._xor_session_bytes(self._b64decode_loose(str(request_data["encoded"])), session_key),
+                kind="request",
+            )
+            structured_params = decoded_request.get("structured_data") or {}
+            if structured_params:
+                terminal_command, operation, target_path = self._session_request_command(structured_params)
+                request_summary = self._request_summary(operation, terminal_command or "")
+            else:
+                decoded_text = str(decoded_request.get("text") or "").strip()
+                if decoded_text and raw_size < 256:
+                    terminal_command, operation, target_path = self._terminal_command(decoded_text)
+                    request_summary = self._request_summary(operation, terminal_command)
+
+        php_script_source = (
+            str(request_data.get("loader_decoded_source") or "")
+            or str(request_data.get("loader_wrapper") or "")
+            or str(variant["php_source"])
+        )
+        parsed: dict[str, Any] = {
             "family_parser": self.name,
             "family_variant": str(variant["family_variant"]),
             "godzilla_variant_id": str(variant["id"]),
             "webshell_label": f"可能是{variant['label']}",
             "parsed_operation": operation,
             "request_summary": request_summary,
-            "terminal_command": None,
-            "php_script_source": str(variant["php_source"]),
-            "crypto_summary": str(variant["crypto"]),
+            "terminal_command": terminal_command,
+            "target_path": target_path,
+            "php_script_source": php_script_source,
+            "crypto_summary": str(request_data.get("crypto_summary") or variant["crypto"]),
             "session_markers": {
                 "pass": request_data["param_name"],
             },
         }
+        parsed.update(
+            {
+                "loader_param": request_data.get("loader_param"),
+                "payload_name": request_data.get("payload_name"),
+                "session_key": session_key or None,
+                "loader_wrapper": request_data.get("loader_wrapper"),
+                "decoded_request": self._trim(decoded_request.get("text"), 8000) if decoded_request else None,
+            }
+        )
+        return parsed
 
     def _parse_session_response(
         self,
@@ -304,7 +340,7 @@ if (isset($_POST[$pass])){
         if pass_name:
             session_markers["pass"] = pass_name
 
-        return {
+        parsed: dict[str, Any] = {
             "output_type": "encrypted_response",
             "parsed_output": {
                 "encrypted_length": len(response_data["encoded"]),
@@ -319,19 +355,82 @@ if (isset($_POST[$pass])){
             "php_script_source": str(variant["php_source"]),
             "session_markers": session_markers,
         }
+        session_key = str((request_parse or {}).get("session_key") or variant.get("session_key") or "").strip()
+        if session_key:
+            decoded = self._describe_session_blob(
+                self._xor_session_bytes(self._b64decode_loose(response_data["encoded"]), session_key),
+                kind="response",
+            )
+            preview = str(decoded.get("text") or decoded.get("preview") or "").strip()
+            parsed.update(
+                {
+                    "output_type": "decrypted_response",
+                    "output_summary": str(decoded.get("summary") or f"response {len(preview)}B"),
+                    "output_preview": self._trim(preview, 240),
+                    "output": self._trim(preview, 2000),
+                    "terminal_output": self._trim(preview, 4000),
+                    "parsed_output": {
+                        **parsed["parsed_output"],
+                        "decoded_summary": decoded.get("summary"),
+                        "decoded_text": self._trim(decoded.get("text"), 4000) if decoded.get("text") else None,
+                        "decoded_preview": self._trim(preview, 4000),
+                        "decoded_encoding": decoded.get("encoding"),
+                    },
+                }
+            )
+        return parsed
 
-    def _extract_session_request(self, body: str, variant: dict[str, Any]) -> dict[str, str] | None:
+    def _extract_session_request(self, body: str, variant: dict[str, Any]) -> dict[str, Any] | None:
         params = parse_qs(str(body or ""), keep_blank_values=True)
+        if not params:
+            return None
+
         pass_name = str(variant.get("pass") or "pass")
-        values = params.get(pass_name) or []
-        if len(params) != 1 or len(values) != 1:
+        direct = self._extract_direct_session_request(params, pass_name=pass_name)
+        if direct is not None:
+            return direct
+
+        loader_candidates = self._extract_loader_request_candidates(params)
+        if not loader_candidates:
             return None
-        encoded = re.sub(r"\s+", "", values[0] or "")
-        if not self._looks_like_base64(encoded, min_length=24):
+
+        hinted_pass_names = [
+            str(item.get("pass_name") or "").strip()
+            for item in loader_candidates
+            if str(item.get("pass_name") or "").strip()
+        ]
+        data_candidate = self._select_session_data_param(
+            params,
+            exclude_names={str(item.get("param_name") or "").strip() for item in loader_candidates},
+            preferred_names=[*hinted_pass_names, pass_name],
+        )
+        if data_candidate is None:
             return None
+
+        matched_loader = None
+        for loader in loader_candidates:
+            if str(loader.get("pass_name") or "").strip() == str(data_candidate["param_name"]).strip():
+                matched_loader = loader
+                break
+        if matched_loader is None and hinted_pass_names:
+            return None
+        if matched_loader is None:
+            matched_loader = loader_candidates[0]
+
+        wrapper_text = str(matched_loader.get("wrapper_text") or "")
         return {
-            "param_name": pass_name,
-            "encoded": encoded,
+            "param_name": str(data_candidate["param_name"]),
+            "encoded": str(data_candidate["encoded"]),
+            "loader_param": str(matched_loader.get("param_name") or ""),
+            "loader_wrapper": wrapper_text or None,
+            "loader_decoded_source": str(matched_loader.get("decoded_source") or "") or None,
+            "payload_name": str(matched_loader.get("payload_name") or "") or None,
+            "session_key": str(matched_loader.get("session_key") or "") or None,
+            "crypto_summary": self._session_crypto_summary(
+                param_name=str(data_candidate["param_name"]),
+                loader_param=str(matched_loader.get("param_name") or ""),
+                wrapper_text=wrapper_text,
+            ),
         }
 
     def _extract_session_response(self, body: str) -> dict[str, str] | None:
@@ -356,6 +455,154 @@ if (isset($_POST[$pass])){
             return False
         return re.fullmatch(r"[A-Za-z0-9+/=]+", compact) is not None
 
+    def _extract_direct_session_request(self, params: dict[str, list[str]], *, pass_name: str) -> dict[str, Any] | None:
+        values = params.get(pass_name) or []
+        if len(params) != 1 or len(values) != 1:
+            return None
+        encoded = re.sub(r"\s+", "", values[0] or "")
+        if not self._looks_like_base64(encoded, min_length=24):
+            return None
+        return {
+            "param_name": pass_name,
+            "encoded": encoded,
+        }
+
+    def _extract_loader_request_candidates(self, params: dict[str, list[str]]) -> list[dict[str, str]]:
+        candidates: list[dict[str, str]] = []
+        for param_name, values in params.items():
+            if not values:
+                continue
+            loader = self._decode_loader_request_value(values[0])
+            if loader is None:
+                continue
+            loader["param_name"] = param_name
+            candidates.append(loader)
+        return candidates
+
+    def _decode_loader_request_value(self, value: str) -> dict[str, str] | None:
+        wrapper_text = self._normalize_output(str(value or ""))
+        if not wrapper_text:
+            return None
+        if "%" in wrapper_text:
+            wrapper_text = self._normalize_output(unquote(wrapper_text))
+
+        lowered = wrapper_text.lower()
+        if "eval(" not in lowered or "base64_decode(" not in lowered:
+            return None
+
+        quoted_candidates = re.findall(r"['\"]([^'\"]{40,})['\"]", wrapper_text, re.S)
+        for raw_candidate in quoted_candidates:
+            decoded_source = self._decode_loader_candidate(raw_candidate, wrapper_text)
+            if decoded_source is None or not self._looks_like_session_loader_source(decoded_source):
+                continue
+            return {
+                "wrapper_text": wrapper_text,
+                "decoded_source": decoded_source,
+                "pass_name": self._extract_php_assignment(decoded_source, "pass") or "",
+                "payload_name": self._extract_php_assignment(decoded_source, "payloadName") or "",
+                "session_key": self._extract_php_assignment(decoded_source, "key") or "",
+            }
+        return None
+
+    def _decode_loader_candidate(self, raw_candidate: str, wrapper_text: str) -> str | None:
+        candidate = str(raw_candidate or "").strip()
+        if not candidate:
+            return None
+        if "urldecode(" in wrapper_text.lower() or "%" in candidate:
+            candidate = unquote(candidate)
+        if "strrev(" in wrapper_text.lower():
+            candidate = candidate[::-1]
+        compact = re.sub(r"\s+", "", candidate)
+        if not self._looks_like_base64(compact, min_length=40):
+            return None
+        try:
+            decoded = self._b64decode_loose(compact)
+        except Exception:
+            return None
+        decoded_text, _, printable_ratio = self._best_effort_text(decoded)
+        if printable_ratio < 0.65:
+            return None
+        return decoded_text
+
+    def _looks_like_session_loader_source(self, text: str) -> bool:
+        source = str(text or "")
+        required_patterns = (
+            r"session_start\s*\(",
+            r"function\s+encode\s*\(",
+            r"isset\s*\(\s*\$_POST\[\$pass\]\s*\)",
+            r"substr\s*\(\s*md5\s*\(\s*\$pass\s*\.\s*\$key\s*\)\s*,\s*0\s*,\s*16\s*\)",
+            r"base64_encode\s*\(\s*encode\s*\(\s*@?run\(\$data\)\s*,\s*\$key\s*\)\s*\)",
+        )
+        return all(re.search(pattern, source, re.IGNORECASE) is not None for pattern in required_patterns)
+
+    def _extract_php_assignment(self, text: str, variable: str) -> str | None:
+        match = re.search(rf"\${re.escape(variable)}\s*=\s*['\"]([^'\"]+)['\"]", str(text or ""))
+        if not match:
+            return None
+        return self._normalize_output(match.group(1)) or None
+
+    def _select_session_data_param(
+        self,
+        params: dict[str, list[str]],
+        *,
+        exclude_names: set[str],
+        preferred_names: list[str],
+    ) -> dict[str, str] | None:
+        candidates: list[dict[str, Any]] = []
+        preferred = {str(item).strip() for item in preferred_names if str(item).strip()}
+        for param_name, values in params.items():
+            if param_name in exclude_names or not values:
+                continue
+            encoded = re.sub(r"\s+", "", values[0] or "")
+            if not self._looks_like_base64(encoded, min_length=8):
+                continue
+            try:
+                decoded = self._b64decode_loose(encoded)
+            except Exception:
+                continue
+            if not decoded:
+                continue
+            score = 0
+            if param_name in preferred:
+                score += 100
+            score += min(len(encoded) // 64, 8)
+            score += min(len(decoded) // 16, 8)
+            candidates.append(
+                {
+                    "param_name": param_name,
+                    "encoded": encoded,
+                    "score": score,
+                    "decoded_length": len(decoded),
+                }
+            )
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (int(item["score"]), int(item["decoded_length"])), reverse=True)
+        best = candidates[0]
+        return {
+            "param_name": str(best["param_name"]),
+            "encoded": str(best["encoded"]),
+        }
+
+    def _session_crypto_summary(self, *, param_name: str, loader_param: str, wrapper_text: str) -> str:
+        wrapper_tokens = []
+        lowered = str(wrapper_text or "").lower()
+        for token in ("eval", "base64_decode", "strrev", "urldecode"):
+            if token in lowered:
+                wrapper_tokens.append(token)
+        loader_label = str(loader_param or "").strip()
+        if loader_label and wrapper_tokens:
+            loader_label = f"{loader_label}({'/'.join(wrapper_tokens)})"
+        layout_bits = []
+        if loader_label:
+            layout_bits.append(f"loader={loader_label}")
+        layout_bits.append(f"data={param_name}")
+        return (
+            f"form params {'; '.join(layout_bits)}; "
+            "base64(xor(data,key[(i+1)&15])); "
+            "response 16hex + base64(xor(output,key[(i+1)&15])) + 16hex"
+        )
+
     def _xor_session_bytes(self, data: bytes, key: str) -> bytes:
         key_bytes = key.encode("utf-8", errors="ignore")
         if not key_bytes:
@@ -376,13 +623,14 @@ if (isset($_POST[$pass])){
         nested_analysis = None
         structured_data = None
 
-        if kind == "request" and not is_text:
+        if kind == "request":
             structured = self._describe_session_request_structure(data)
             if structured is not None:
                 structured_data = structured["params"]
                 text = structured["text"]
                 preview = structured["preview"]
                 summary = structured["summary"]
+                encoding = f"{structured['encoding']}:structured"
                 nested_analysis = self._inspect_nested_param_values(structured["params"])
         if text is None:
             transformed = self._describe_transformed_blob(data, kind=kind)
@@ -717,6 +965,77 @@ if (isset($_POST[$pass])){
             return None
         return self._unescape_php_string(match.group(1))
 
+    def _session_request_command(self, params: dict[str, Any]) -> tuple[str | None, str, str | None]:
+        method_name = str(params.get("methodName") or "").strip()
+        operation = self._session_method_operation(method_name)
+
+        cmd_line = str(params.get("cmdLine") or "").strip()
+        if cmd_line:
+            parsed_command, target_path = self._parse_session_cmdline(cmd_line)
+            if parsed_command:
+                return parsed_command, operation, target_path
+
+        file_name = str(params.get("fileName") or "").strip()
+        if file_name and operation == "read_file":
+            return f"cat {file_name}", operation, file_name
+        if file_name and operation == "delete_file":
+            return f"rm {file_name}", operation, file_name
+
+        dir_name = str(params.get("dirName") or "").strip()
+        if dir_name and operation == "list_directory":
+            return f"ls {dir_name}", operation, dir_name
+
+        if method_name:
+            return f"methodName={method_name}", operation, None
+        return None, operation, None
+
+    def _parse_session_cmdline(self, cmd_line: str) -> tuple[str | None, str | None]:
+        text = self._normalize_output(cmd_line)
+        if not text:
+            return None, None
+
+        normalized = re.sub(r"\s+", " ", text).strip()
+        lowered = normalized.lower()
+
+        if lowered.startswith('sh -c "cd "') and '";' in normalized:
+            rest = normalized[len('sh -c "cd "') :]
+            cwd, _, tail = rest.partition('";')
+            command = re.sub(r'"\s*(?:2>&1)?\s*$', "", tail.strip()).strip()
+            lines: list[str] = []
+            cwd = cwd.strip()
+            if cwd:
+                lines.append(f"cd {cwd}")
+            if command:
+                lines.append(command)
+            return ("\n".join(lines).strip() or None), (cwd or None)
+
+        if lowered.startswith('sh -c "'):
+            body = normalized[len('sh -c "') :]
+            body = re.sub(r'"\s*(?:2>&1)?\s*$', "", body).strip()
+            return body or None, None
+
+        if lowered.startswith('cmd /c '):
+            body = normalized[len('cmd /c ') :].strip().strip('"')
+            return body or None, None
+
+        compact = re.sub(r"\s+2>&1$", "", normalized).strip()
+        return compact or None, None
+
+    def _session_method_operation(self, method_name: str) -> str:
+        normalized = re.sub(r"[^A-Za-z0-9_]+", "_", str(method_name or "").strip()).strip("_").lower()
+        if not normalized:
+            return "encrypted_command"
+        aliases = {
+            "execcommand": "execute_command",
+            "getbasicsinfo": "probe_environment",
+            "listfile": "list_directory",
+            "deletefile": "delete_file",
+            "showfile": "read_file",
+            "test": "session_test",
+            "g_close": "session_close",
+        }
+        return aliases.get(normalized, f"session_{normalized}")
+
     def _extract_echo_value(self, text: str) -> str | None:
         match = re.search(r"echo\((\d+)\)", text, re.IGNORECASE)
         if match:
@@ -733,6 +1052,18 @@ if (isset($_POST[$pass])){
     def _request_summary(self, operation: str, command: str) -> str:
         if operation == "execute_command" and command:
             return f"执行命令 {command.splitlines()[-1]}"
+        if operation == "probe_environment":
+            return "收集主机环境信息"
+        if operation == "list_directory":
+            return f"列出目录 {command.splitlines()[-1]}" if command else "列出目录"
+        if operation == "read_file":
+            return f"读取文件 {command.splitlines()[-1]}" if command else "读取文件"
+        if operation == "delete_file":
+            return f"删除文件 {command.splitlines()[-1]}" if command else "删除文件"
+        if operation == "session_test":
+            return "测试 Godzilla 会话"
+        if operation == "session_close":
+            return "关闭 Godzilla 会话"
         if operation == "print_workdir":
             return "获取当前工作目录"
         if operation == "whoami":

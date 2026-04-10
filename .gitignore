@@ -13,6 +13,7 @@ traffic_data.db
 
 # Large local capture files
 tests/Data.pcap
+tests/
 
 # Local runtime artifacts
 data/projects/

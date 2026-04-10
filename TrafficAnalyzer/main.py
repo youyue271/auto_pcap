@@ -30,7 +30,11 @@ def cmd_analyze(args) -> int:
 
     service = build_default_pipeline_service()
     try:
-        report = service.analyze_file(args.pcap_path, max_packets=args.max_packets)
+        report = service.analyze_file(
+            args.pcap_path,
+            max_packets=args.max_packets,
+            tls_keylog_file=args.tls_keylog_file,
+        )
     except Exception as exc:
         print(f"分析失败: {exc}")
         return 1
@@ -99,6 +103,11 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser = subparsers.add_parser("analyze", help="分析一个 pcap 文件")
     analyze_parser.add_argument("pcap_path", help="PCAP 文件路径")
     analyze_parser.add_argument("--max-packets", type=int, default=None, help="仅分析前 N 个包")
+    analyze_parser.add_argument(
+        "--tls-keylog-file",
+        default=None,
+        help="TLS NSS/SSLKEYLOGFILE 密钥日志文件路径，用于解密 HTTPS/TLS 流量",
+    )
     analyze_parser.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     analyze_parser.set_defaults(func=cmd_analyze)
 

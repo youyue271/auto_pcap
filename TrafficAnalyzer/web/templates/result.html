@@ -6,88 +6,179 @@
   <title>分析结果 - {{ filename }}</title>
   <style>
     :root {
-      --bg: #0a1020;
-      --panel: #111c35;
-      --card: #192644;
-      --text: #e5edf8;
-      --muted: #9db0cc;
-      --ok: #22c55e;
-      --warn: #f59e0b;
-      --danger: #ef4444;
+      --bg-primary: #0b0c0e;
+      --bg-secondary: #141619;
+      --bg-tertiary: #1f2024;
+      --border-subtle: #2a2d32;
+      --border-emphasis: #3d4148;
+      --text-primary: #e8eaed;
+      --text-secondary: #9aa0a6;
+      --text-muted: #5f6368;
+      --accent-blue: #4c9aff;
+      --accent-cyan: #00b8d9;
+      --status-success: #36b37e;
+      --status-warning: #ffab00;
+      --status-error: #ff5630;
+      --status-info: #00b8d9;
+
+      /* Legacy aliases */
+      --bg1: var(--bg-primary);
+      --bg2: var(--bg-secondary);
+      --panel: var(--bg-tertiary);
+      --panel-strong: var(--bg-secondary);
+      --panel-border: var(--border-subtle);
+      --line: var(--border-subtle);
+      --card: var(--bg-tertiary);
+      --text: var(--text-primary);
+      --muted: var(--text-secondary);
+      --accent: var(--accent-blue);
+      --ok: var(--status-success);
+      --warn: var(--status-warning);
+      --danger: var(--status-error);
+      --shadow-lg: 0 2px 8px rgba(0, 0, 0, .3);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
-      background:
-        radial-gradient(circle at 20% -10%, rgba(14, 165, 233, .25), transparent 35%),
-        radial-gradient(circle at 100% 100%, rgba(245, 158, 11, .2), transparent 30%),
-        var(--bg);
-      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
       min-height: 100vh;
       padding: 24px;
     }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
     .container {
-      width: min(1100px, 100%);
+      width: min(1180px, 100%);
       margin: 0 auto;
       display: grid;
       gap: 16px;
     }
     .panel {
-      background: var(--panel);
-      border: 1px solid rgba(255, 255, 255, .08);
-      border-radius: 14px;
-      padding: 16px 18px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow-lg);
+    }
+    .hero {
+      display: grid;
+      gap: 10px;
+    }
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
     }
     h1, h2 {
       margin: 0 0 10px;
       font-weight: 700;
     }
     .muted { color: var(--muted); }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--status-success);
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: var(--bg-secondary);
+      color: var(--status-success);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 600;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
     }
     .metric {
-      background: var(--card);
-      border-radius: 12px;
-      padding: 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 14px;
     }
-    .metric .label { color: var(--muted); font-size: 13px; }
+    .metric .label { color: var(--text-secondary); font-size: 13px; }
     .metric .value { font-size: 24px; margin-top: 8px; font-weight: 700; }
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 14px;
       overflow: hidden;
-      border-radius: 10px;
+      border-radius: 12px;
+      background: var(--bg-secondary);
     }
     th, td {
       text-align: left;
-      padding: 10px;
-      border-bottom: 1px solid rgba(255, 255, 255, .08);
+      padding: 11px 10px;
+      border-bottom: 1px solid var(--line);
       vertical-align: top;
     }
     th {
-      color: var(--muted);
+      color: var(--text-secondary);
       font-weight: 600;
+      background: var(--bg-tertiary);
     }
-    .severity-high { color: var(--danger); }
-    .severity-medium { color: var(--warn); }
-    .severity-low { color: var(--ok); }
-    .actions a {
-      color: #7dd3fc;
-      text-decoration: none;
+    .severity-high { color: var(--status-error); }
+    .severity-medium { color: var(--status-warning); }
+    .severity-low { color: var(--status-success); }
+    .empty-state {
+      border: 1px dashed var(--border-subtle);
+      border-radius: 12px;
+      padding: 18px;
+      text-align: center;
+      color: var(--text-secondary);
+      background: var(--bg-secondary);
     }
+    @media (max-width: 700px) {
+      body { padding: 14px; }
+      .panel { padding: 16px; }
+    }
+    /* Removed black redesign override - using unified design system */
   </style>
 </head>
 <body>
   <main class="container">
-    <section class="panel">
-      <h1>分析完成</h1>
-      <div class="muted">文件: {{ filename }}</div>
-      <div class="actions" style="margin-top:8px;"><a href="/">继续分析其它文件</a></div>
+    <section class="panel hero">
+      <div class="hero-top">
+        <div>
+          <h1>分析完成</h1>
+          <div class="muted">文件: {{ filename }}</div>
+        </div>
+        <span class="status">报告已生成</span>
+      </div>
+      <div class="actions"><a class="back-link" href="/">继续分析其它文件</a></div>
     </section>
 
     <section class="panel">
@@ -125,7 +216,7 @@
         </tbody>
       </table>
       {% else %}
-      <div class="muted">未识别到已注册协议事件。</div>
+      <div class="empty-state">未识别到已注册协议事件。</div>
       {% endif %}
     </section>
 
@@ -155,7 +246,7 @@
         </tbody>
       </table>
       {% else %}
-      <div class="muted">未命中攻击规则。</div>
+      <div class="empty-state">未命中攻击规则。</div>
       {% endif %}
     </section>
 
@@ -211,7 +302,7 @@
       </div>
       {% endif %}
       {% else %}
-      <div class="muted">当前报告无调试信息。</div>
+      <div class="empty-state">当前报告无调试信息。</div>
       {% endif %}
     </section>
   </main>

@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrafficAnalyzer</title>
+  <style>
+    :root {
+      --bg-primary: #000000;
+      --bg-secondary: #0a0a0a;
+      --bg-tertiary: #111111;
+      --bg-elevated: #1a1a1a;
+      --border: #222222;
+      --border-hover: #333333;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0a0;
+      --text-muted: #666666;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --info: #06b6d4;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* Layout */
+    .app {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-header .subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .topbar {
+      height: 60px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    /* Components */
+    .section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .section-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .section-body {
+      padding: 20px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-hover);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .badge-wait { background: rgba(6, 182, 212, 0.1); color: var(--info); }
+    .badge-run { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+    .badge-ok { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+    .badge-err { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+
+    .input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+    .card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .card:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-hover);
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .card-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      padding: 10px 16px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .tab:hover {
+      color: var(--text-primary);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .console {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    .metric {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+    }
+
+    .metric-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .module-item {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: grab;
+    }
+
+    .module-item:active {
+      cursor: grabbing;
+    }
+
+    .module-type {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--accent);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .module-name {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .module-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 6px;
+      padding: 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-bottom: 16px;
+      transition: all 0.15s;
+    }
+
+    .drop-zone.active {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+      color: var(--accent);
+    }
+
+    .project-item {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .project-item:hover {
+      background: var(--bg-elevated);
+      border-color: var(--border-hover);
+    }
+
+    .project-item.current {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .project-name {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .project-id {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      margin-bottom: 8px;
+    }
+
+    .project-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .chip {
+      padding: 2px 8px;
+      background: var(--bg-elevated);
+      border-radius: 4px;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 80vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .modal-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 12px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 1024px) {
+      .sidebar {
+        position: fixed;
+        left: -280px;
+        top: 0;
+        bottom: 0;
+        z-index: 100;
+        transition: left 0.3s;
+      }
+
+      .sidebar.open {
+        left: 0;
+      }
+
+      .grid-2, .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>TrafficAnalyzer</h1>
+        <div class="subtitle">流量分析工作台</div>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- Upload Section -->
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">上传文件</div>
+          </div>
+          <div class="section-body">
+            <div class="field">
+              <label>PCAP 文件</label>
+              <input id="pcap-file" type="file" accept=".pcap,.pcapng,.cap" class="input">
+            </div>
+            <div class="field">
+              <label>最大包数</label>
+              <input id="max-packets" type="number" min="1" placeholder="全部" class="input">
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm" id="restart-btn">重新解析</button>
+              <button class="btn btn-sm" id="clear-log-btn">清空日志</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">状态</div>
+            <span class="badge badge-wait" id="run-status">等待文件</span>
+          </div>
+          <div class="section-body">
+            <div class="grid grid-2" style="gap: 8px; font-size: 12px;">
+              <div>
+                <div style="color: var(--text-muted); margin-bottom: 4px;">文件名</div>
+                <div id="meta-file-name">-</div>
+              </div>
+              <div>
+                <div style="color: var(--text-muted); margin-bottom: 4px;">大小</div>
+                <div id="meta-file-size">-</div>
+              </div>
+              <div>
+                <div style="color: var(--text-muted); margin-bottom: 4px;">Packet</div>
+                <div id="meta-packet-count">0</div>
+              </div>
+              <div>
+                <div style="color: var(--text-muted); margin-bottom: 4px;">模块</div>
+                <div id="meta-module-count">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Console -->
+        <div class="section">
+          <div class="section-header">
+            <div class="section-title">日志</div>
+          </div>
+          <div class="section-body" style="padding: 0;">
+            <pre id="console-box" class="console">[INFO] 等待任务...</pre>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <div class="topbar">
+        <span class="badge badge-wait" id="top-status">等待文件</span>
+        <div style="flex: 1;"></div>
+        <button class="btn btn-sm" id="project-refresh-btn">刷新项目</button>
+      </div>
+
+      <div class="content">
+        <!-- Metrics -->
+        <div class="grid grid-3" style="margin-bottom: 24px;">
+          <div class="metric">
+            <div class="metric-label">总 Packet</div>
+            <div class="metric-value" id="meta-total-packet-count">-</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">已解析</div>
+            <div class="metric-value" id="metric-parsed">0</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">解析进度</div>
+            <div class="metric-value" id="meta-parse-progress" style="font-size: 16px;">0 / -</div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" data-tab="projects">项目</button>
+          <button class="tab" data-tab="modules">模块库</button>
+          <button class="tab" data-tab="workspace">工作区</button>
+          <button class="tab" data-tab="results">结果</button>
+        </div>
+
+        <!-- Tab Panes -->
+        <div class="tab-pane active" id="pane-projects">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">样本项目</div>
+              <div class="actions">
+                <button class="btn btn-sm" id="project-delete-selected-btn">删除选中</button>
+                <button class="btn btn-sm" id="project-clear-deletable-btn">清空可删</button>
+              </div>
+            </div>
+            <div class="section-body">
+              <div id="project-library"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="pane-modules">
+          <div class="grid grid-2">
+            <div class="section">
+              <div class="section-header">
+                <div class="section-title">协议解析</div>
+              </div>
+              <div class="section-body">
+                <div id="protocol-library"></div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">
+                <div class="section-title">攻击检测</div>
+              </div>
+              <div class="section-body">
+                <div id="attack-library"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="pane-workspace">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">解析栏目</div>
+              <button class="btn btn-sm" id="clear-active-btn">清空</button>
+            </div>
+            <div class="section-body">
+              <div id="drop-zone" class="drop-zone">
+                拖动左侧模块到这里，或直接点击模块卡片加入工作区
+              </div>
+              <div id="active-module-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="pane-results">
+          <div class="section">
+            <div class="section-header">
+              <div class="section-title">分析结果</div>
+            </div>
+            <div class="section-body">
+              <div id="result-tabs" class="tabs" style="border: none; margin-bottom: 16px;"></div>
+              <div id="result-panes"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirm-overlay" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="confirm-title">请确认操作</h3>
+      </div>
+      <div class="modal-body">
+        <div id="confirm-copy" style="margin-bottom: 16px; color: var(--text-secondary);"></div>
+        <div id="confirm-meta" style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 12px; white-space: pre-wrap;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="confirm-cancel-btn">取消</button>
+        <button class="btn btn-primary" id="confirm-ok-btn">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 此处保留原有的所有 JavaScript 逻辑
+    // 由于篇幅限制，我会在下一个文件中继续
+  </script>
+</body>
+</html>

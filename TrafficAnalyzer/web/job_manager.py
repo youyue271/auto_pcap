@@ -32,6 +32,7 @@ from TrafficAnalyzer.utils.tls_keylog import normalize_local_input_path, resolve
 PROJECT_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "data" / "projects"
 
 BASIC_PROTOCOL_LAYER_HINTS: dict[str, set[str]] = {
+    "FTP": {"ftp"},
     "HTTP": {"http"},
     "DNS": {"dns"},
     "TLS": {"tls", "ssl"},
@@ -40,11 +41,240 @@ BASIC_PROTOCOL_LAYER_HINTS: dict[str, set[str]] = {
 }
 
 BASIC_PROTOCOL_PORT_HINTS: dict[str, set[int]] = {
+    "FTP": {21},
     "HTTP": {80, 8000, 8008, 8080, 8081, 8888},
     "DNS": {53},
     "TLS": {443, 8443},
     "Modbus": {502},
 }
+
+ANALYSIS_TOPIC_DEFINITIONS: list[dict[str, object]] = [
+    {
+        "group": "MISC-WEB流量分析",
+        "topic": "HTTP流量分析",
+        "protocols": ["HTTP"],
+        "summary": "登录表单、Cookie、JSON、文件上传、对象重建与页面线索提取",
+        "module_protocols": ["HTTP"],
+        "module_attacks": [],
+        "sample_hit_keys": ["HTTP"],
+    },
+    {
+        "group": "MISC-WEB流量分析",
+        "topic": "TLS流量分析",
+        "protocols": ["TLS", "HTTPS", "SSL"],
+        "summary": "证书、SNI、版本、Cipher Suite，以及基于 keylog 的解密重跑",
+        "module_protocols": ["TLS", "HTTP"],
+        "module_attacks": [],
+        "sample_hit_keys": ["TLS"],
+    },
+    {
+        "group": "MISC-WEB流量分析",
+        "topic": "AntSword流量分析",
+        "protocols": ["HTTP", "HTTPS"],
+        "summary": "WebShell 通道、参数编码、请求响应指纹与管理端行为还原",
+        "module_protocols": ["HTTP", "TLS"],
+        "module_attacks": ["WebShellDetector"],
+        "sample_hit_keys": ["HTTP", "TLS"],
+    },
+    {
+        "group": "MISC-WEB流量分析",
+        "topic": "Godzilla流量分析",
+        "protocols": ["HTTP", "HTTPS"],
+        "summary": "XOR / Base64 / zlib 载荷、Session 初始化与命令执行链路",
+        "module_protocols": ["HTTP", "TLS"],
+        "module_attacks": ["WebShellDetector"],
+        "sample_hit_keys": ["HTTP", "TLS"],
+    },
+    {
+        "group": "MISC-WEB流量分析",
+        "topic": "Behinder流量分析",
+        "protocols": ["HTTP", "HTTPS"],
+        "summary": "加密 WebShell 会话、响应特征与动态密钥协商痕迹",
+        "module_protocols": ["HTTP", "TLS"],
+        "module_attacks": [],
+        "sample_hit_keys": ["HTTP", "TLS"],
+    },
+    {
+        "group": "MISC-WEB流量分析",
+        "topic": "CS流量分析",
+        "protocols": ["HTTP", "HTTPS", "DNS", "SMB"],
+        "summary": "Beacon 常见出网通道、域前置、DNS Beacon 与横向流量入口",
+        "module_protocols": ["HTTP", "TLS", "DNS"],
+        "module_attacks": [],
+        "sample_hit_keys": ["HTTP", "TLS", "DNS"],
+    },
+    {
+        "group": "MISC-USB流量分析",
+        "topic": "USB数据流量分析",
+        "protocols": ["USB", "USB HID", "USB Mass Storage"],
+        "summary": "设备画像、端点方向、HID 原始报文与 Mass Storage 命令视图",
+        "module_protocols": ["USB"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB"],
+    },
+    {
+        "group": "MISC-USB流量分析",
+        "topic": "键盘流量分析",
+        "protocols": ["USB HID"],
+        "summary": "按键码、组合键、输入文本与键盘取证轨迹",
+        "module_protocols": ["USB"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB"],
+    },
+    {
+        "group": "MISC-USB流量分析",
+        "topic": "鼠标流量分析",
+        "protocols": ["USB HID"],
+        "summary": "坐标轨迹、点击事件、拖拽路径与图像重建入口",
+        "module_protocols": ["USB"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB"],
+    },
+    {
+        "group": "MISC-USB流量分析",
+        "topic": "数位板流量分析",
+        "protocols": ["USB HID"],
+        "summary": "笔压、坐标、接触事件与绘图类输入设备分析",
+        "module_protocols": ["USB"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB"],
+    },
+    {
+        "group": "MISC-USB流量分析",
+        "topic": "手柄流量分析",
+        "protocols": ["USB HID"],
+        "summary": "按键、摇杆、触发器与游戏控制器输入状态还原",
+        "module_protocols": ["USB"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB"],
+    },
+    {
+        "group": "MISC-USB流量分析",
+        "topic": "打印机流量分析",
+        "protocols": ["USB Printer Class", "USB"],
+        "summary": "打印任务、页描述语言、作业边界与打印痕迹定位",
+        "module_protocols": ["USB"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB"],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "网络协议",
+        "protocols": ["HTTP", "DNS", "TLS", "FTP", "ICMP", "SMTP", "Telnet", "SMB", "MQTT"],
+        "summary": "常见网络协议题型入口，适合先按会话、端口与明文程度分层查看",
+        "module_protocols": ["HTTP", "DNS", "TLS", "FTP"],
+        "module_attacks": [],
+        "sample_hit_keys": ["HTTP", "DNS", "TLS", "FTP"],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "硬件通讯协议",
+        "protocols": ["USB", "Modbus", "UART", "I2C", "SPI", "CAN"],
+        "summary": "工控和硬件通讯常见总线入口，结合时序、地址和功能码分析",
+        "module_protocols": ["USB", "Modbus"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB", "Modbus"],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "损坏流量恢复",
+        "protocols": ["PCAP", "PCAPNG", "TCP", "HTTP", "TLS"],
+        "summary": "面向流重组、对象恢复、分片合并与损坏会话补全",
+        "module_protocols": ["HTTP", "TLS", "FTP"],
+        "module_attacks": [],
+        "sample_hit_keys": ["HTTP", "TLS", "FTP"],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "FTP流量分析",
+        "protocols": ["FTP"],
+        "summary": "控制通道、数据通道、账号口令与文件传输重建",
+        "module_protocols": ["FTP"],
+        "module_attacks": [],
+        "sample_hit_keys": ["FTP"],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "ICMP流量分析",
+        "protocols": ["ICMP"],
+        "summary": "Echo / Tunnel / 隐蔽通道与异常载荷长度模式",
+        "module_protocols": [],
+        "module_attacks": [],
+        "sample_hit_keys": [],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "SMTP流量分析",
+        "protocols": ["SMTP", "MIME"],
+        "summary": "邮件正文、附件传输、认证与隐写载荷入口",
+        "module_protocols": [],
+        "module_attacks": [],
+        "sample_hit_keys": [],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "Telnet流量分析",
+        "protocols": ["Telnet"],
+        "summary": "明文交互、认证过程与命令回显分析",
+        "module_protocols": [],
+        "module_attacks": [],
+        "sample_hit_keys": [],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "SMB流量分析",
+        "protocols": ["SMB", "NetBIOS", "DCE/RPC"],
+        "summary": "共享访问、文件操作、认证交换与横向线索",
+        "module_protocols": [],
+        "module_attacks": [],
+        "sample_hit_keys": [],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "ADB流量分析",
+        "protocols": ["ADB", "USB"],
+        "summary": "设备连接、Shell 命令、文件同步与 Android 调试痕迹",
+        "module_protocols": ["USB"],
+        "module_attacks": [],
+        "sample_hit_keys": ["USB"],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "MQTT流量分析",
+        "protocols": ["MQTT"],
+        "summary": "Broker、Topic、QoS 与物联网消息发布订阅行为",
+        "module_protocols": [],
+        "module_attacks": [],
+        "sample_hit_keys": [],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "无线密码破解",
+        "protocols": ["802.11", "EAPOL", "WPA/WPA2", "RSN"],
+        "summary": "握手包提取、SSID/BSSID 关联与无线口令爆破入口",
+        "module_protocols": [],
+        "module_attacks": [],
+        "sample_hit_keys": [],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "蓝牙流量分析",
+        "protocols": ["Bluetooth", "BLE", "L2CAP", "RFCOMM", "ATT/GATT"],
+        "summary": "蓝牙配对、属性交互、串口仿真与 BLE 设备行为追踪",
+        "module_protocols": [],
+        "module_attacks": [],
+        "sample_hit_keys": [],
+    },
+    {
+        "group": "MISC-其他流量分析",
+        "topic": "加密流量分析",
+        "protocols": ["TLS", "SSL", "HTTPS", "SSH", "自定义加密信道"],
+        "summary": "证书链、密钥日志、隧道特征与应用层解密重跑",
+        "module_protocols": ["TLS", "HTTP"],
+        "module_attacks": ["WebShellDetector"],
+        "sample_hit_keys": ["TLS"],
+    },
+]
 
 
 def _now_iso() -> str:
@@ -1156,6 +1386,7 @@ class JobManager:
                 running_module_count=running_modules,
             )
             recommended_protocol_modules = self._recommend_protocol_modules(job.basic_protocol_distribution)
+            analysis_topic_catalog = self._build_analysis_topic_catalog(job.basic_protocol_distribution)
             if job.target_packet_count:
                 progress_percent = round((job.packet_count / job.target_packet_count) * 100, 2)
             for module in job.modules.values():
@@ -1199,6 +1430,7 @@ class JobManager:
                         "progress_percent": progress_percent,
                         "basic_protocol_distribution": job.basic_protocol_distribution,
                         "recommended_protocol_modules": recommended_protocol_modules,
+                        "analysis_topic_catalog": analysis_topic_catalog,
                         "active_modules": active_modules,
                         "running_modules": running_modules,
                         "pending_modules": pending_modules,
@@ -1228,6 +1460,51 @@ class JobManager:
                     "name": str(name),
                     "count": int(count),
                     "description": str(item.get("description") or ""),
+                }
+            )
+        return rows
+
+    def _build_analysis_topic_catalog(self, distribution: dict[str, int]) -> list[dict]:
+        active_protocols = {
+            str(name)
+            for name, count in (distribution or {}).items()
+            if self._safe_int(count) is not None and int(count) > 0
+        }
+        rows: list[dict] = []
+        for item in ANALYSIS_TOPIC_DEFINITIONS:
+            module_protocols = [str(name) for name in (item.get("module_protocols") or [])]
+            module_attacks = [str(name) for name in (item.get("module_attacks") or [])]
+            sample_hit_keys = [str(name) for name in (item.get("sample_hit_keys") or [])]
+
+            available_modules: list[dict[str, str]] = []
+            for name in module_protocols:
+                if name in self.protocol_names:
+                    available_modules.append({"type": "protocol", "name": name})
+            for name in module_attacks:
+                if name in self.attack_names:
+                    available_modules.append({"type": "attack", "name": name})
+
+            expected_module_count = len(module_protocols) + len(module_attacks)
+            if expected_module_count <= 0:
+                support_status = "专题总览"
+            elif len(available_modules) >= expected_module_count:
+                support_status = "协议已接入"
+            elif available_modules:
+                support_status = "协议部分接入"
+            else:
+                support_status = "协议未接入"
+
+            current_hits = [name for name in sample_hit_keys if name in active_protocols]
+            rows.append(
+                {
+                    "group": str(item.get("group") or ""),
+                    "topic": str(item.get("topic") or ""),
+                    "protocols": [str(name) for name in (item.get("protocols") or []) if str(name)],
+                    "summary": str(item.get("summary") or ""),
+                    "support_status": support_status,
+                    "available_modules": available_modules,
+                    "current_hits": current_hits,
+                    "current_hit": bool(current_hits),
                 }
             )
         return rows
@@ -1856,12 +2133,17 @@ class JobManager:
             response_packet_index = self._safe_int(evidence.get("response_packet_index"))
             position = self._safe_int(evidence.get("position"))
             candidate_char = str(evidence.get("candidate_char") or "")
+            compare_kind = str(evidence.get("compare_kind") or "").strip()
+            compare_operator = str(evidence.get("compare_operator") or "").strip()
+            compare_value = self._safe_int(evidence.get("compare_value"))
             entry_signature = (
                 signature,
                 request_packet_index if request_packet_index is not None else -1,
                 response_packet_index if response_packet_index is not None else -1,
                 position if position is not None else -1,
                 candidate_char,
+                compare_kind,
+                compare_value if compare_value is not None else -1,
             )
             if entry_signature in seen_entries:
                 continue
@@ -1875,6 +2157,9 @@ class JobManager:
                     "response_frame_number": self._safe_int(evidence.get("response_frame_number")),
                     "position": position,
                     "candidate_char": candidate_char,
+                    "compare_kind": compare_kind or None,
+                    "compare_operator": compare_operator or None,
+                    "compare_value": compare_value,
                     "response_length": self._safe_int(evidence.get("response_length")),
                     "response_status_code": str(evidence.get("response_status_code") or "").strip() or None,
                     "response_preview": str(evidence.get("response_preview") or "").strip(),
@@ -1914,6 +2199,13 @@ class JobManager:
 
         length_info = self._infer_sqli_true_lengths(entries)
         true_lengths = set(length_info.get("true_lengths") or [])
+        target_length_info = self._infer_sqli_target_length(
+            entries,
+            true_marker=true_marker,
+            response_texts=response_texts,
+            true_lengths=true_lengths,
+        )
+        target_length = self._safe_int(target_length_info.get("value"))
         restored_chars: list[str] = []
         resolved_positions: list[dict] = []
         stop_reason = "completed"
@@ -1926,28 +2218,59 @@ class JobManager:
                     str(item.get("candidate_char") or ""),
                 ),
             )
-            if true_marker:
-                true_candidates = [
-                    item
-                    for item in candidates
-                    if true_marker and true_marker in str(
-                        response_texts.get(
-                            (
-                                self._safe_int(item.get("response_packet_index"))
-                                if self._safe_int(item.get("response_packet_index")) is not None
-                                else -1
-                            ),
-                            "",
-                        )
-                    )
-                ]
-            else:
-                true_candidates = [
-                    item
-                    for item in candidates
-                    if self._safe_int(item.get("response_length")) in true_lengths
-                ]
+            compare_kinds = {
+                str(item.get("compare_kind") or "").strip()
+                for item in candidates
+                if str(item.get("compare_kind") or "").strip()
+            }
+            if "ascii_substr_compare" in compare_kinds:
+                numeric_info = self._infer_sqli_numeric_value(
+                    candidates,
+                    true_marker=true_marker,
+                    response_texts=response_texts,
+                    true_lengths=true_lengths,
+                )
+                resolved_value = self._safe_int(numeric_info.get("value"))
+                resolved_char = chr(resolved_value) if resolved_value is not None and 0 <= resolved_value <= 255 else ""
+                resolved = bool(resolved_char)
+                resolved_positions.append(
+                    {
+                        "position": position,
+                        "candidate_count": len(candidates),
+                        "true_candidate_count": int(numeric_info.get("true_observation_count") or 0),
+                        "resolved": resolved,
+                        "resolved_char": resolved_char,
+                        "resolution_mode": "numeric_compare",
+                        "value_lower_bound": numeric_info.get("lower_bound"),
+                        "value_upper_bound": numeric_info.get("upper_bound"),
+                        "max_response_length": max(
+                            [self._safe_int(item.get("response_length")) or 0 for item in candidates],
+                            default=0,
+                        ),
+                        "true_request_packet_index": numeric_info.get("true_request_packet_index"),
+                        "true_response_packet_index": numeric_info.get("true_response_packet_index"),
+                        "true_response_length": numeric_info.get("true_response_length"),
+                        "true_response_preview": str(numeric_info.get("true_response_preview") or ""),
+                        "candidate_chars": [str(item.get("candidate_char") or "") for item in candidates[:12]],
+                        "observed_thresholds": numeric_info.get("observed_values") or [],
+                    }
+                )
+                if resolved:
+                    restored_chars.append(resolved_char)
+                    if target_length is not None and len(restored_chars) >= target_length:
+                        break
+                    continue
+                if restored_chars:
+                    stop_reason = "unresolved_numeric_compare"
+                    break
+                continue
 
+            true_candidates = self._select_sqli_true_candidates(
+                candidates,
+                true_marker=true_marker,
+                response_texts=response_texts,
+                true_lengths=true_lengths,
+            )
             resolved_char = str(true_candidates[0].get("candidate_char") or "") if len(true_candidates) == 1 else ""
             resolved_positions.append(
                 {
@@ -1956,6 +2279,7 @@ class JobManager:
                     "true_candidate_count": len(true_candidates),
                     "resolved": len(true_candidates) == 1,
                     "resolved_char": resolved_char,
+                    "resolution_mode": "candidate_truth",
                     "max_response_length": max(
                         [self._safe_int(item.get("response_length")) or 0 for item in candidates],
                         default=0,
@@ -1970,6 +2294,8 @@ class JobManager:
 
             if len(true_candidates) == 1:
                 restored_chars.append(resolved_char)
+                if target_length is not None and len(restored_chars) >= target_length:
+                    break
                 continue
             if restored_chars:
                 stop_reason = "ambiguous_true_candidate" if len(true_candidates) > 1 else "no_true_candidate"
@@ -1995,6 +2321,12 @@ class JobManager:
             "true_length_values": sorted(true_lengths),
             "length_strategy": str(length_info.get("strategy") or ""),
             "length_split_gap": length_info.get("split_gap"),
+            "target_length": target_length,
+            "target_length_strategy": str(target_length_info.get("strategy") or ""),
+            "target_length_bounds": {
+                "lower": target_length_info.get("lower_bound"),
+                "upper": target_length_info.get("upper_bound"),
+            },
             "response_length_distribution": list(length_info.get("distribution") or []),
             "positions": resolved_positions,
         }
@@ -2036,6 +2368,136 @@ class JobManager:
             "split_gap": split_gap,
             "distribution": [(str(length), count) for length, count in counter.most_common()],
         }
+
+    def _select_sqli_true_candidates(
+        self,
+        entries: list[dict],
+        *,
+        true_marker: str,
+        response_texts: dict[int, str],
+        true_lengths: set[int],
+    ) -> list[dict]:
+        return [
+            item
+            for item in entries
+            if self._is_sqli_true_entry(
+                item,
+                true_marker=true_marker,
+                response_texts=response_texts,
+                true_lengths=true_lengths,
+            )
+        ]
+
+    def _is_sqli_true_entry(
+        self,
+        entry: dict,
+        *,
+        true_marker: str,
+        response_texts: dict[int, str],
+        true_lengths: set[int],
+    ) -> bool:
+        if true_marker:
+            response_packet_index = self._safe_int(entry.get("response_packet_index"))
+            body = response_texts.get(response_packet_index if response_packet_index is not None else -1, "")
+            return bool(true_marker and true_marker in str(body))
+        return self._safe_int(entry.get("response_length")) in true_lengths
+
+    def _infer_sqli_target_length(
+        self,
+        entries: list[dict],
+        *,
+        true_marker: str,
+        response_texts: dict[int, str],
+        true_lengths: set[int],
+    ) -> dict:
+        length_entries = [
+            item
+            for item in entries
+            if str(item.get("compare_kind") or "").strip() == "length_compare"
+        ]
+        if not length_entries:
+            return {"strategy": "missing"}
+        value_info = self._infer_sqli_numeric_value(
+            length_entries,
+            true_marker=true_marker,
+            response_texts=response_texts,
+            true_lengths=true_lengths,
+        )
+        return {
+            **value_info,
+            "strategy": "numeric_compare" if value_info.get("resolved") else "numeric_bounds",
+        }
+
+    def _infer_sqli_numeric_value(
+        self,
+        entries: list[dict],
+        *,
+        true_marker: str,
+        response_texts: dict[int, str],
+        true_lengths: set[int],
+    ) -> dict:
+        lower_bound: int | None = None
+        upper_bound: int | None = None
+        true_observation_count = 0
+        representative_true: dict | None = None
+        observed_values: list[int] = []
+
+        for entry in entries:
+            compare_value = self._safe_int(entry.get("compare_value"))
+            operator = str(entry.get("compare_operator") or "").strip()
+            if compare_value is None or not operator:
+                continue
+            observed_values.append(compare_value)
+            is_true = self._is_sqli_true_entry(
+                entry,
+                true_marker=true_marker,
+                response_texts=response_texts,
+                true_lengths=true_lengths,
+            )
+            if is_true:
+                true_observation_count += 1
+                representative_true = representative_true or entry
+
+            bound = self._sqli_numeric_bounds_for_observation(compare_value, operator, is_true)
+            if bound is None:
+                continue
+            bound_lower, bound_upper = bound
+            if bound_lower is not None:
+                lower_bound = bound_lower if lower_bound is None else max(lower_bound, bound_lower)
+            if bound_upper is not None:
+                upper_bound = bound_upper if upper_bound is None else min(upper_bound, bound_upper)
+
+        resolved = lower_bound is not None and upper_bound is not None and lower_bound == upper_bound
+        return {
+            "resolved": resolved,
+            "value": lower_bound if resolved else None,
+            "lower_bound": lower_bound,
+            "upper_bound": upper_bound,
+            "true_observation_count": true_observation_count,
+            "observed_values": sorted(set(observed_values)),
+            "true_request_packet_index": representative_true.get("request_packet_index") if representative_true else None,
+            "true_response_packet_index": representative_true.get("response_packet_index") if representative_true else None,
+            "true_response_length": representative_true.get("response_length") if representative_true else None,
+            "true_response_preview": str((representative_true or {}).get("response_preview") or ""),
+        }
+
+    def _sqli_numeric_bounds_for_observation(
+        self,
+        compare_value: int,
+        operator: str,
+        is_true: bool,
+    ) -> tuple[int | None, int | None] | None:
+        if operator == ">":
+            return (compare_value + 1, None) if is_true else (None, compare_value)
+        if operator == ">=":
+            return (compare_value, None) if is_true else (None, compare_value - 1)
+        if operator == "<":
+            return (None, compare_value - 1) if is_true else (compare_value, None)
+        if operator == "<=":
+            return (None, compare_value) if is_true else (compare_value + 1, None)
+        if operator == "=":
+            return (compare_value, compare_value) if is_true else None
+        return None
 
     def _load_http_payloads_by_packet_indexes(self, *, db_path: str, packet_indexes: list[int]) -> dict[int, str]:
         indexes = sorted({int(index) for index in packet_indexes if isinstance(index, int) and index >= 0})

@@ -312,7 +312,9 @@ class PipelineService:
             grouped.setdefault(event.protocol, []).append(event)
 
         for protocol, events in grouped.items():
-            if protocol == "HTTP":
+            if protocol == "FTP":
+                details["FTP"] = self._ftp_details(events, limit_per_protocol)
+            elif protocol == "HTTP":
                 details["HTTP"] = self._http_details(events, limit_per_protocol)
             elif protocol == "DNS":
                 details["DNS"] = self._dns_details(events, limit_per_protocol)
@@ -337,6 +339,224 @@ class PipelineService:
                     "record_count": len(events),
                 }
         return details
+
+    def _ftp_details(self, events: List[ProtocolEvent], limit: int) -> dict:
+        commands: list[dict[str, Any]] = []
+        transfer_rows: dict[str, dict[str, Any]] = {}
+        username_profiles: dict[str, dict[str, Any]] = {}
+        control_stream_state: dict[str, dict[str, Any]] = {}
+        username_counter: Counter[str] = Counter()
+        command_counter: Counter[str] = Counter()
+
+        for event in events:
+            detail = event.details or {}
+            entry_type = str(detail.get("entry_type") or "").strip().lower()
+            control_stream = str(detail.get("control_stream") or event.flow_id or "").strip()
+            state = control_stream_state.setdefault(control_stream, {"last_username": None})
+
+            if entry_type in {"request", "response"}:
+                command = str(detail.get("command") or "").upper().strip() or None
+                response_code = str(detail.get("response_code") or "").strip() or None
+                username = str(detail.get("username") or state.get("last_username") or "").strip() or None
+                password = str(detail.get("password") or "").strip() or None
+                transfer_id = str(detail.get("transfer_id") or "").strip() or None
+
+                if command == "USER" and username:
+                    state["last_username"] = username
+                    profile = username_profiles.setdefault(
+                        username,
+                        {
+                            "username": username,
+                            "_passwords": [],
+                            "_streams": set(),
+                            "login_success_count": 0,
+                            "command_count": 0,
+                        },
+                    )
+                    profile["_streams"].add(control_stream)
+                    username_counter[username] += 1
+
+                if username:
+                    profile = username_profiles.setdefault(
+                        username,
+                        {
+                            "username": username,
+                            "_passwords": [],
+                            "_streams": set(),
+                            "login_success_count": 0,
+                            "command_count": 0,
+                        },
+                    )
+                    profile["_streams"].add(control_stream)
+                    profile["command_count"] = int(profile.get("command_count") or 0) + 1
+                    if password and password not in profile["_passwords"]:
+                        profile["_passwords"].append(password)
+                    if response_code == "230":
+                        profile["login_success_count"] = int(profile.get("login_success_count") or 0) + 1
+
+                if command:
+                    command_counter[command] += 1
+
+                if transfer_id:
+                    row = transfer_rows.setdefault(
+                        transfer_id,
+                        {
+                            "transfer_id": transfer_id,
+                            "control_stream": control_stream,
+                            "command": command or None,
+                            "argument": detail.get("argument"),
+                            "filename": detail.get("filename"),
+                            "transfer_direction": detail.get("transfer_direction"),
+                            "data_connection_mode": detail.get("data_connection_mode"),
+                            "request_packet_index": event.packet_index if entry_type == "request" else None,
+                            "response_150_packet_index": None,
+                            "response_226_packet_index": None,
+                            "src_ip": event.src_ip,
+                            "dst_ip": event.dst_ip,
+                            "_data": bytearray(),
+                            "chunk_count": 0,
+                            "byte_count": 0,
+                        },
+                    )
+                    if command and not row.get("command"):
+                        row["command"] = command
+                    if detail.get("argument") and not row.get("argument"):
+                        row["argument"] = detail.get("argument")
+                    if detail.get("filename") and not row.get("filename"):
+                        row["filename"] = detail.get("filename")
+                    if detail.get("transfer_direction") and not row.get("transfer_direction"):
+                        row["transfer_direction"] = detail.get("transfer_direction")
+                    if detail.get("data_connection_mode") and not row.get("data_connection_mode"):
+                        row["data_connection_mode"] = detail.get("data_connection_mode")
+                    if entry_type == "request":
+                        row["request_packet_index"] = event.packet_index
+                    if response_code == "150":
+                        row["response_150_packet_index"] = event.packet_index
+                    if response_code == "226":
+                        row["response_226_packet_index"] = event.packet_index
+
+                commands.append(
+                    {
+                        "packet_index": event.packet_index,
+                        "timestamp": event.timestamp,
+                        "src_ip": event.src_ip,
+                        "dst_ip": event.dst_ip,
+                        "control_stream": control_stream,
+                        "entry_type": entry_type,
+                        "command": command,
+                        "argument": detail.get("argument"),
+                        "response_code": response_code,
+                        "response_text": detail.get("response_text"),
+                        "username": username,
+                        "password": password,
+                        "transfer_id": transfer_id,
+                    }
+                )
+                continue
+
+            if entry_type != "data":
+                continue
+
+            transfer_id = str(detail.get("transfer_id") or "").strip()
+            if not transfer_id:
+                continue
+
+            row = transfer_rows.setdefault(
+                transfer_id,
+                {
+                    "transfer_id": transfer_id,
+                    "control_stream": control_stream,
+                    "command": detail.get("command"),
+                    "argument": detail.get("argument"),
+                    "filename": detail.get("filename"),
+                    "transfer_direction": detail.get("transfer_direction"),
+                    "data_connection_mode": detail.get("data_connection_mode"),
+                    "request_packet_index": None,
+                    "response_150_packet_index": None,
+                    "response_226_packet_index": None,
+                    "src_ip": event.src_ip,
+                    "dst_ip": event.dst_ip,
+                    "_data": bytearray(),
+                    "chunk_count": 0,
+                    "byte_count": 0,
+                },
+            )
+            chunk_bytes = self._ftp_payload_to_bytes(detail.get("chunk_hex"))
+            if not chunk_bytes:
+                continue
+            row["_data"].extend(chunk_bytes)
+            row["chunk_count"] = int(row.get("chunk_count") or 0) + 1
+            row["byte_count"] = int(row.get("byte_count") or 0) + len(chunk_bytes)
+
+        export_context = self._ftp_export_context()
+        files: list[dict[str, Any]] = []
+        for index, transfer in enumerate(transfer_rows.values(), start=1):
+            data = bytes(transfer.pop("_data", bytearray()))
+            row = {
+                "transfer_id": transfer.get("transfer_id"),
+                "control_stream": transfer.get("control_stream"),
+                "command": transfer.get("command"),
+                "argument": transfer.get("argument"),
+                "filename": transfer.get("filename"),
+                "display_path": self._ftp_transfer_display_path(transfer),
+                "transfer_direction": transfer.get("transfer_direction"),
+                "data_connection_mode": transfer.get("data_connection_mode"),
+                "request_packet_index": transfer.get("request_packet_index"),
+                "response_150_packet_index": transfer.get("response_150_packet_index"),
+                "response_226_packet_index": transfer.get("response_226_packet_index"),
+                "chunk_count": int(transfer.get("chunk_count") or 0),
+                "byte_count": int(transfer.get("byte_count") or len(data)),
+                "preview": self._ftp_preview_text(data),
+            }
+            exported = self._maybe_export_ftp_transfer(export_context=export_context, transfer=row, data=data, transfer_index=index)
+            if exported:
+                row.update(exported)
+            files.append(row)
+
+        username_rows: list[dict[str, Any]] = []
+        for profile in username_profiles.values():
+            passwords = list(profile.get("_passwords") or [])
+            streams = sorted(str(item) for item in profile.get("_streams") or set())
+            username_rows.append(
+                {
+                    "username": profile.get("username"),
+                    "passwords": passwords,
+                    "password_count": len(passwords),
+                    "has_password": bool(passwords),
+                    "login_success_count": int(profile.get("login_success_count") or 0),
+                    "control_streams": streams,
+                    "command_count": int(profile.get("command_count") or 0),
+                }
+            )
+
+        username_rows.sort(
+            key=lambda item: (
+                -int(item.get("login_success_count") or 0),
+                -int(item.get("password_count") or 0),
+                str(item.get("username") or ""),
+            )
+        )
+        commands.sort(key=lambda item: int(item.get("packet_index") or -1))
+        files.sort(
+            key=lambda item: (
+                str(item.get("display_path") or ""),
+                int(item.get("request_packet_index") or -1),
+            )
+        )
+
+        return {
+            "records": commands[:limit],
+            "record_count": len(events),
+            "commands": commands[:400],
+            "command_count": len(commands),
+            "files": files[:200],
+            "transfer_count": len(files),
+            "exported_transfer_count": sum(1 for item in files if item.get("url")),
+            "usernames": username_rows,
+            "username_count": len(username_rows),
+            "top_usernames": username_counter.most_common(50),
+            "top_commands": command_counter.most_common(50),
+        }
 
     def _http_details(self, events: List[ProtocolEvent], limit: int) -> dict:
         requests = []
@@ -538,6 +758,105 @@ class PipelineService:
         except Exception:
             return None
         return number - 1 if number > 0 else None
+
+    def _ftp_export_context(self) -> tuple[Path, Path] | None:
+        source = str(self.source or "").strip()
+        if not source or source in {"in-memory", "unit-test"}:
+            return None
+
+        source_path = Path(source)
+        if not source_path.exists():
+            return None
+
+        export_root = self.http_export_root
+        try:
+            export_root.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", source_path.stem) or "capture"
+        source_hash = hashlib.sha1(str(source_path.resolve()).encode("utf-8", errors="ignore")).hexdigest()[:8]
+        capture_dir = export_root / "ftp_rebuild" / f"{safe_stem}_{source_hash}"
+        try:
+            capture_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        return export_root, capture_dir
+
+    def _maybe_export_ftp_transfer(
+        self,
+        *,
+        export_context: tuple[Path, Path] | None,
+        transfer: dict[str, Any],
+        data: bytes,
+        transfer_index: int,
+    ) -> dict[str, Any] | None:
+        if export_context is None or not data:
+            return None
+
+        export_root, capture_dir = export_context
+        direction_dir = "downloads" if str(transfer.get("transfer_direction") or "") == "server_to_client" else "uploads"
+        export_dir = capture_dir / direction_dir
+        export_parts = self._ftp_transfer_parts(transfer=transfer, transfer_index=transfer_index)
+        export_path = export_dir.joinpath(*export_parts)
+        export_path.parent.mkdir(parents=True, exist_ok=True)
+        export_path.write_bytes(data)
+        relative = export_path.relative_to(export_root).as_posix()
+        return {
+            "saved_path": str(export_path),
+            "saved_name": export_path.name,
+            "saved_size": len(data),
+            "url": artifact_raw_url(relative),
+            "viewer_url": artifact_viewer_url(relative),
+        }
+
+    def _ftp_transfer_parts(self, *, transfer: dict[str, Any], transfer_index: int) -> list[str]:
+        raw_name = str(transfer.get("filename") or transfer.get("argument") or "").strip()
+        if not raw_name and str(transfer.get("command") or "").upper() == "LIST":
+            packet_index = int(transfer.get("request_packet_index") or 0)
+            return [f"listing_pkt{packet_index:06d}_{transfer_index:03d}.txt"]
+
+        decoded = unquote(raw_name)
+        raw_parts = [part for part in re.split(r"[\\/]+", decoded) if part and part not in {".", ".."}]
+        safe_parts = [
+            self._sanitize_http_rebuild_name(part, fallback=f"segment_{idx}")
+            for idx, part in enumerate(raw_parts, start=1)
+        ]
+        if safe_parts:
+            return safe_parts
+
+        packet_index = int(transfer.get("request_packet_index") or 0)
+        command_name = self._sanitize_http_rebuild_name(str(transfer.get("command") or "ftp"), fallback="ftp")
+        return [f"{command_name}_pkt{packet_index:06d}_{transfer_index:03d}.bin"]
+
+    def _ftp_transfer_display_path(self, transfer: dict[str, Any]) -> str:
+        raw_name = str(transfer.get("filename") or transfer.get("argument") or "").strip()
+        if raw_name:
+            return raw_name
+        command = str(transfer.get("command") or "").upper().strip() or "FTP"
+        packet_index = int(transfer.get("request_packet_index") or 0)
+        if command == "LIST":
+            return f"listing/pkt_{packet_index:06d}.txt"
+        return f"{command.lower()}/pkt_{packet_index:06d}.bin"
+
+    def _ftp_payload_to_bytes(self, value: Any) -> bytes:
+        compact = re.sub(r"[^0-9A-Fa-f]", "", str(value or ""))
+        if not compact or len(compact) % 2 != 0:
+            return b""
+        try:
+            return bytes.fromhex(compact)
+        except ValueError:
+            return b""
+
+    def _ftp_preview_text(self, data: bytes) -> str:
+        if not data:
+            return ""
+        for encoding in ("utf-8", "gb18030", "latin-1"):
+            try:
+                text = data.decode(encoding)
+            except Exception:
+                continue
+            return self._trim_text(text.replace("\r\n", "\n"), 200)
+        return self._trim_text(data.hex(), 200)
 
     def _normalize_http_payload_text(self, value: Any) -> str:
         text = str(value or "").strip()

@@ -524,8 +524,19 @@ class PacketParser:
         if http_fields or "http" in layers:
             raw_layers["http"] = http_fields
 
+        ftp_fields = {
+            "request_command": data.get("ftp.request.command"),
+            "request_arg": data.get("ftp.request.arg"),
+            "response_code": data.get("ftp.response.code"),
+            "response_arg": data.get("ftp.response.arg"),
+        }
+        ftp_fields = {k: v for k, v in ftp_fields.items() if v not in (None, "")}
+        if ftp_fields or "ftp" in layers:
+            raw_layers["ftp"] = ftp_fields
+
         tcp_fields = {
             "stream": data.get("tcp.stream"),
+            "payload": data.get("tcp.payload"),
         }
         tcp_fields = {k: v for k, v in tcp_fields.items() if v not in (None, "")}
         if tcp_fields or "tcp" in layers:
